@@ -120,7 +120,7 @@ func (s *bertyOrbitDB) OpenGroup(ctx context.Context, g *bertytypes.Group, optio
 	id := g.GroupIDAsString()
 
 	existingGC, err := s.getGroupContext(id)
-	if err != nil && err != errcode.ErrMissingMapKey {
+	if err != nil && errcode.Code(err) != errcode.ErrMissingMapKey.Code() {
 		return nil, errcode.ErrInternal.Wrap(err)
 	} else if err == nil {
 		return existingGC, nil
@@ -141,7 +141,7 @@ func (s *bertyOrbitDB) OpenGroup(ctx context.Context, g *bertytypes.Group, optio
 	}
 
 	// Force secret generation if missing
-	if _, err := getDeviceSecret(ctx, g, s.messageKeystore, s.deviceKeystore); err != nil {
+	if _, err := s.messageKeystore.GetDeviceSecret(ctx, g, s.deviceKeystore); err != nil {
 		return nil, errcode.ErrCryptoKeyGeneration.Wrap(err)
 	}
 

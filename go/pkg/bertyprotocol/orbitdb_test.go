@@ -192,6 +192,10 @@ func testFilterAppMetadata(t *testing.T, events <-chan *bertytypes.GroupMetadata
 	out := []*bertytypes.AppMetadata(nil)
 
 	for evt := range events {
+		if evt == nil {
+			continue
+		}
+
 		if evt.Metadata.EventType != bertytypes.EventTypeGroupMetadataPayloadSent {
 			continue
 		}
