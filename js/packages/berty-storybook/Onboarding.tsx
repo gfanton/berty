@@ -1,4 +1,4 @@
-import React, { useState, useRef, useContext, useEffect } from 'react'
+import React, { useState, useRef } from 'react'
 import {
 	View,
 	ActivityIndicator as Spinner,
@@ -239,11 +239,7 @@ const SwiperCard: React.FC<{
 					{description}
 				</Text>
 				{children}
-				{button ? (
-					<Button onPress={button.onPress} style={[{}]}>
-						{button.text}
-					</Button>
-				) : null}
+				{button ? <Button onPress={button.onPress}>{button.text}</Button> : null}
 				{skip ? (
 					<TouchableOpacity style={[margin.top.medium]} onPress={skip.onPress}>
 						<Text style={[text.size.small, text.color.grey, text.align.center]}>{skip.text}</Text>
@@ -258,6 +254,7 @@ const CreateYourAccount: React.FC<{
 	next: Navigation
 }> = ({ next }) => {
 	const [name, setName] = useState('')
+	const [bridgePort, setBridgePort] = useState(1337)
 	const [{ text, padding, margin, background, border }] = useStyles()
 	const createAccount = Chat.useAccountCreate()
 	return (
@@ -270,7 +267,7 @@ const CreateYourAccount: React.FC<{
 					button={{
 						text: t('onboarding.create-account.button'),
 						onPress: async (): Promise<void> => {
-							createAccount({ name: name || 'Anonymous 1337' })
+							createAccount({ name: name || 'Anonymous 1337', bridgePort })
 							// @TODO: Error handling
 							next()
 						},
@@ -286,6 +283,17 @@ const CreateYourAccount: React.FC<{
 							border.radius.small,
 						]}
 						onChangeText={setName}
+					/>
+					<TextInput
+						placeholder={'Bridge port'}
+						style={[
+							margin.top.medium,
+							background.light.grey,
+							padding.medium,
+							text.size.large,
+							border.radius.small,
+						]}
+						onChangeText={setBridgePort}
 					/>
 				</SwiperCard>
 			)}
@@ -394,6 +402,7 @@ export const Performance: React.FC<{
 	const { onLayout, height } = useLayout()
 	const swiperRef = useRef<Swiper>(null)
 	const next: (index: number) => () => void = (index) => (): void => {
+		console.log('swiping to', index, 'with', !!swiperRef, 'and', !!swiperRef?.current)
 		swiperRef && swiperRef.current && swiperRef.current.scrollTo(index, true)
 	}
 	const [{ absolute, background }] = useStyles()
@@ -425,6 +434,7 @@ export const Privacy: React.FC<{}> = () => {
 	const { onLayout, ...layout } = useLayout()
 	const swiperRef = useRef<Swiper>(null)
 	const next: (index: number) => () => void = (index) => (): void => {
+		console.log('swiping to', index, 'with', !!swiperRef, 'and', !!swiperRef?.current)
 		swiperRef && swiperRef.current && swiperRef.current.scrollTo(index, true)
 		return
 	}
@@ -440,6 +450,7 @@ export const Privacy: React.FC<{}> = () => {
 						scrollEnabled={false}
 					>
 						<CreateYourAccount next={next(2)} />
+						{/*<GeneratingYourKey next={next(3)} />*/}
 						<SetupFinished />
 					</Swiper>
 				</KeyboardAvoidingView>

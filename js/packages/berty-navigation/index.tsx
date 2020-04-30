@@ -445,10 +445,10 @@ export const Navigation: React.FC = () => {
 				name={Routes.Onboarding.GetStarted}
 				component={Stories.Onboarding.GetStarted}
 			/>
-			<NavigationStack.Screen
+			{/*<NavigationStack.Screen
 				name={Routes.Onboarding.SelectMode}
 				component={Stories.Onboarding.SelectMode}
-			/>
+			/>*/}
 			<NavigationStack.Screen
 				name={Routes.Onboarding.Performance}
 				component={Stories.Onboarding.Performance}

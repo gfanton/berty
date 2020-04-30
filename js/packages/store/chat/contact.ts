@@ -78,10 +78,21 @@ export namespace Query {
 	export type GetWithId = { contactPk: Uint8Array | Buffer; accountId: string }
 }
 
+export type ContactRequestMetadata = {
+	name: string
+}
+
 export namespace Event {
 	export type Created = Entity
 	export type OutgoingContactRequestAccepted = { accountId: string; contactPk: Uint8Array }
 	export type OutgoingContactRequestSent = { id: string; date: number }
+	export type OutgoingContactRequestEnqueued = {
+		accountId: string
+		contactPk: string
+		groupPk: string
+		metadata: ContactRequestMetadata
+		addedDate: number
+	}
 	export type Deleted = { id: string }
 }
 
@@ -103,10 +114,11 @@ export type QueryReducer = {
 }
 
 export type EventsReducer = {
-	deleted: SimpleCaseReducer<Event.Deleted>
-	outgoingContactRequestAccepted: SimpleCaseReducer<Event.OutgoingContactRequestAccepted>
+	outgoingContactRequestEnqueued: SimpleCaseReducer<Event.OutgoingContactRequestEnqueued>
 	outgoingContactRequestSent: SimpleCaseReducer<Event.OutgoingContactRequestSent>
+	outgoingContactRequestAccepted: SimpleCaseReducer<Event.OutgoingContactRequestAccepted>
 	created: SimpleCaseReducer<Event.Created>
+	deleted: SimpleCaseReducer<Event.Deleted>
 }
 
 const initialState: State = {
@@ -130,13 +142,16 @@ export const getAggregateId = ({
 	contactPk,
 }: {
 	accountId: string
-	contactPk: Uint8Array | Buffer
+	contactPk: string | Uint8Array | Buffer
 }) => {
-	return Buffer.concat([Buffer.from(accountId, 'utf-8'), Buffer.from(contactPk)]).toString('base64')
+	return Buffer.concat([
+		Buffer.from(accountId, 'utf-8'),
+		typeof contactPk === 'string' ? Buffer.from(contactPk, 'base64') : Buffer.from(contactPk),
+	]).toString('base64')
 }
 
-const encodePublicKey = (pk: Buffer | Uint8Array) => Buffer.from(pk).toString('utf-8')
-const decodePublicKey = (pk: string): Buffer => Buffer.from(pk, 'utf-8')
+const encodePublicKey = (pk: Buffer | Uint8Array) => Buffer.from(pk).toString('base64')
+const decodePublicKey = (pk: string): Buffer => Buffer.from(pk, 'base64')
 
 const eventHandler = createSlice<State, EventsReducer>({
 	name: 'chat/contact/event',
@@ -151,6 +166,31 @@ const eventHandler = createSlice<State, EventsReducer>({
 			const contact = state.aggregates[id] as Entity | undefined
 			if (contact && contact.request.type === ContactRequestType.Outgoing) {
 				contact.request.accepted = true
+			}
+			return state
+		},
+		outgoingContactRequestEnqueued: (state: State, { payload }) => {
+			const { accountId, contactPk, groupPk, metadata, addedDate } = payload
+			if (!accountId || !contactPk) {
+				return state
+			}
+			const id = getAggregateId({ accountId, contactPk })
+			const contact = state.aggregates[id]
+			if (!contact) {
+				state.aggregates[id] = {
+					id,
+					accountId,
+					name: metadata.name,
+					publicKey: contactPk,
+					groupPk,
+					request: {
+						type: ContactRequestType.Outgoing,
+						accepted: false,
+						discarded: false,
+						sent: false,
+					},
+					addedDate,
+				}
 			}
 			return state
 		},
@@ -316,36 +356,45 @@ function* getContact(id: string) {
 export function* orchestrator() {
 	yield all([
 		takeEvery(protocol.events.client.accountContactRequestOutgoingEnqueued, function*(action) {
-			const { aggregateId: accountId, event } = action.payload
-			const { groupPk, contact: c } = event as berty.types.IAccountContactRequestEnqueued
-			if (!c || !c.pk || !groupPk) {
+			const contactPk = action.payload.event.contact.pk
+			if (!contactPk) {
+				throw new Error('No contact pk in AccountContactRequestOutgoingEnqueued')
+			}
+			const groupInfo = (yield* protocol.transactions.client.groupInfo({
+				id: action.payload.aggregateId,
+				contactPk,
+			})) as berty.types.GroupInfo.IReply
+			const { group } = groupInfo
+			if (!group) {
 				return
 			}
-			const id = getAggregateId({ accountId, contactPk: c.pk })
-			const contact = yield* getContact(id)
-			if (!contact) {
-				const metadata = c.metadata ? JSON.parse(new Buffer(c.metadata).toString('utf-8')) : {}
-				yield put(
-					events.created({
-						id,
-						accountId: action.payload.aggregateId,
-						name: metadata.givenName,
-						publicKey: encodePublicKey(c.pk),
-						groupPk: encodePublicKey(groupPk),
-						request: {
-							type: ContactRequestType.Outgoing,
-							accepted: false,
-							discarded: false,
-							sent: false,
-						},
-						addedDate: Date.now(),
-					}),
-				)
+			const { publicKey: groupPk } = group
+			if (!groupPk) {
+				return
 			}
+			yield* protocol.transactions.client.activateGroup({
+				id: action.payload.aggregateId,
+				groupPk,
+			})
+			const contactPkStr = Buffer.from(contactPk).toString('base64')
+			const groupPkStr = Buffer.from(groupPk).toString('base64')
+			const mtdt = action.payload.event.contact.metadata
+			const metadata = mtdt && JSON.parse(Buffer.from(mtdt).toString())
+			yield put(
+				events.outgoingContactRequestEnqueued({
+					accountId: action.payload.aggregateId,
+					contactPk: contactPkStr,
+					groupPk: groupPkStr,
+					metadata,
+					addedDate: Date.now(),
+				}),
+			)
+			console.log('groupInfo', groupInfo)
+			console.log('sub on', groupPk)
 			yield fork(function*() {
 				const chan = yield* protocol.transactions.client.groupMetadataSubscribe({
 					id: action.payload.aggregateId,
-					groupPk: action.payload.event.groupPk,
+					groupPk,
 					since: new Uint8Array(),
 					until: new Uint8Array(),
 					goBackwards: false,
@@ -355,10 +404,11 @@ export function* orchestrator() {
 					yield put(action)
 				}
 			})
+			console.log('sub on', groupPk)
 			yield fork(function*() {
 				const chan = yield* protocol.transactions.client.groupMessageSubscribe({
 					id: action.payload.aggregateId,
-					groupPk: action.payload.event.groupPk,
+					groupPk,
 					since: new Uint8Array(),
 					until: new Uint8Array(),
 					goBackwards: false,
@@ -454,6 +504,7 @@ export function* orchestrator() {
 			}
 		}),
 		takeEvery(protocol.events.client.groupMemberDeviceAdded, function*({ payload }) {
+			console.log('groupMemberDeviceAdded')
 			// This is the only way to know if an outgoing contact request has been accepted without receiving a message
 			const {
 				aggregateId: accountId,
@@ -461,6 +512,7 @@ export function* orchestrator() {
 				event: { devicePk },
 			} = payload
 			if (!groupPk) {
+				console.log('no group pk')
 				return
 			}
 			const client: protocol.client.Entity = yield select((state) =>
@@ -468,10 +520,12 @@ export function* orchestrator() {
 			)
 			// noop if the event comes from our devices
 			if (encodePublicKey(devicePk) === client.devicePk) {
+				console.log('it comes from our device')
 				// TODO: multidevice
 				return
 			}
 			const groupPkStr = encodePublicKey(groupPk)
+
 			const contacts: Entity[] = yield select((state) => queries.list(state))
 			const contact = contacts.find(
 				(contact) =>
@@ -480,12 +534,18 @@ export function* orchestrator() {
 					contact.groupPk === groupPkStr,
 			)
 			if (contact) {
+				console.log('contact found')
 				yield put(
 					events.outgoingContactRequestAccepted({
 						accountId,
 						contactPk: Buffer.from(contact.publicKey, 'utf-8'),
 					}),
 				)
+			} else {
+				console.log('contact not found')
+				console.log('accountId', accountId)
+				console.log('contactRequestTypeOutgoing', ContactRequestType.Outgoing)
+				console.log('groupPk', groupPkStr)
 			}
 		}),
 		...Object.keys(commands).map((commandName) =>

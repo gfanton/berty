@@ -1,12 +1,25 @@
 import {
 	ProtocolServiceClient,
-	mockBridge,
-	protocolServiceHandlerFactory,
+	bridge,
+	WebsocketTransport,
+	//mockBridge,
+	//protocolServiceHandlerFactory,
 } from '@berty-tech/grpc-bridge'
+import { grpc } from '@improbable-eng/grpc-web'
 import { RPCImpl } from 'protobufjs'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { all, takeLeading, put, putResolve, cps, takeEvery, call, select } from 'redux-saga/effects'
+import {
+	all,
+	takeLeading,
+	put,
+	putResolve,
+	cps,
+	takeEvery,
+	call,
+	select,
+	delay,
+} from 'redux-saga/effects'
 import { channel } from 'redux-saga'
 import * as gen from './client.gen'
 import * as api from '@berty-tech/api'
@@ -23,6 +36,7 @@ export type Entity = {
 	lastMetadataCids: { [key: string]: string }
 	//
 	lastMessageCids: { [key: string]: string }
+	bridgePort: number
 }
 
 export type Event = {}
@@ -38,7 +52,7 @@ export type GlobalState = {
 }
 
 export type Commands = gen.Commands<State> & {
-	start: (state: State, action: { payload: { id: string } }) => State
+	start: (state: State, action: { payload: { id: string; bridgePort: number } }) => State
 	delete: (state: State, action: { payload: { id: string } }) => State
 }
 
@@ -53,9 +67,10 @@ export type Events = EventsGen<State> & {
 		action: {
 			payload: {
 				aggregateId: string
-				accountPk: Uint8Array
-				devicePk: Uint8Array
-				accountGroupPk: Uint8Array
+				accountPk: string
+				devicePk: string
+				accountGroupPk: string
+				bridgePort: number
 			}
 		},
 	) => State
@@ -64,7 +79,7 @@ export type Events = EventsGen<State> & {
 		action: {
 			payload: {
 				aggregateId: string
-				publicRendezvousSeed: Uint8Array
+				publicRendezvousSeed: string
 			}
 		},
 	) => State
@@ -155,19 +170,22 @@ const eventHandler = createSlice<State, Events>({
 			const client = state.aggregates[action.payload.aggregateId]
 			state.aggregates[action.payload.aggregateId] = {
 				id: action.payload.aggregateId,
-				accountPk: Buffer.from(action.payload.accountPk).toString(),
-				devicePk: Buffer.from(action.payload.devicePk).toString(),
-				accountGroupPk: Buffer.from(action.payload.accountGroupPk).toString(),
-				lastMetadataCids: client ? client.lastMetadataCids : {},
-				lastMessageCids: client ? client.lastMessageCids : {},
-				contactRequestRdvSeed: client ? client.contactRequestRdvSeed : undefined,
+				accountPk: action.payload.accountPk,
+				devicePk: action.payload.devicePk,
+				accountGroupPk: action.payload.accountGroupPk,
+				lastMetadataCids: client?.lastMessageCids || {},
+				lastMessageCids: client?.lastMessageCids || {},
+				bridgePort: client?.bridgePort || action.payload.bridgePort,
 			}
 			return state
 		},
 		contactRequestRdvSeedUpdated: (state, { payload }) => {
-			state.aggregates[payload.aggregateId].contactRequestRdvSeed = intoBuffer(
-				payload.publicRendezvousSeed,
-			).toString('utf-8')
+			const client = state.aggregates[payload.aggregateId]
+			console.log('crrsu', payload.publicRendezvousSeed)
+			if (client) {
+				console.log('found client')
+				client.contactRequestRdvSeed = payload.publicRendezvousSeed
+			}
 			return state
 		},
 		deleted: (state, action) => {
@@ -242,26 +260,42 @@ const getService = (id: string) => {
 	return service
 }
 
+const ENCODING = 'base64'
+const decodeBuffer = (pk: string) => Buffer.from(pk, ENCODING)
+const encodeBuffer = (buf: Uint8Array) => Buffer.from(buf).toString(ENCODING)
+
 export const transactions: Transactions = {
-	start: function*({ id }) {
+	start: function*({ id, bridgePort }) {
 		if (services[id] != null) {
 			return
 		}
 
-		const client = (yield select((state) => queries.get(state, { id }))) as Entity | undefined
-		const bridge = (yield call(mockBridge, protocolServiceHandlerFactory, !!client)) as RPCImpl
-		services[id] = new ProtocolServiceClient(bridge)
+		console.log('starting client')
+
+		//const client = (yield select((state) => queries.get(state, { id }))) as Entity | undefined
+		//const bridge = (yield call(mockBridge, protocolServiceHandlerFactory, !!client)) as RPCImpl
+		const port = bridgePort || 1337
+		const brdg = bridge({
+			host: `http://127.0.0.1:${port}`,
+			transport: grpc.CrossBrowserHttpTransport({ withCredentials: false, debug: true }),
+			//transport: WebsocketTransport()
+		})
+		services[id] = new ProtocolServiceClient(brdg)
 
 		const { accountPk, devicePk, accountGroupPk } = (yield cps(
 			services[id]?.instanceGetConfiguration,
 			{},
 		)) as api.berty.types.InstanceGetConfiguration.IReply
+		if (!(accountPk && devicePk && accountGroupPk)) {
+			throw new Error('Invalid instance data')
+		}
 		yield putResolve(
 			events.started({
 				aggregateId: id,
-				accountPk: accountPk as Uint8Array,
-				devicePk: devicePk as Uint8Array,
-				accountGroupPk: accountGroupPk as Uint8Array,
+				accountPk: encodeBuffer(accountPk),
+				devicePk: encodeBuffer(devicePk),
+				accountGroupPk: encodeBuffer(accountGroupPk),
+				bridgePort,
 			}),
 		)
 	},
@@ -276,12 +310,25 @@ export const transactions: Transactions = {
 		// do protocol things
 	},
 	contactRequestReference: function*(payload) {
-		// do protocol things
+		const reply = (yield cps(
+			getService(payload.id).contactRequestReference,
+			{},
+		)) as api.berty.types.ContactRequestReference.IReply
+		if (reply.publicRendezvousSeed) {
+			yield put(
+				events.contactRequestRdvSeedUpdated({
+					aggregateId: payload.id,
+					publicRendezvousSeed: encodeBuffer(reply.publicRendezvousSeed),
+				}),
+			)
+		}
+		return reply
 	},
 	contactRequestDisable: function*(payload) {
 		// do protocol things
 	},
 	contactRequestEnable: function*(payload) {
+		console.log('enabling contact request')
 		const reply = (yield cps(
 			getService(payload.id).contactRequestEnable,
 			{},
@@ -289,16 +336,17 @@ export const transactions: Transactions = {
 		if (!reply.publicRendezvousSeed) {
 			throw new Error(`Invalid reference ${reply.publicRendezvousSeed}`)
 		}
+		console.log('cre res', reply.publicRendezvousSeed)
 		yield put(
 			events.contactRequestRdvSeedUpdated({
 				aggregateId: payload.id,
-				publicRendezvousSeed: reply.publicRendezvousSeed,
+				publicRendezvousSeed: encodeBuffer(reply.publicRendezvousSeed),
 			}),
 		)
 		return reply
 	},
 	contactRequestResetReference: function*(payload) {
-		// do protocol things
+		return yield cps(getService(payload.id).contactRequestResetReference, {})
 	},
 	contactRequestSend: function*(payload) {
 		return yield cps(getService(payload.id).contactRequestSend, {
@@ -346,18 +394,21 @@ export const transactions: Transactions = {
 		// do protocol things
 	},
 	appMetadataSend: function*(payload) {
+		console.log('metadata send')
 		return yield cps(getService(payload.id).appMetadataSend, {
 			groupPk: payload.groupPk,
 			payload: payload.payload,
 		})
 	},
 	appMessageSend: function*(payload) {
+		console.log('message send')
 		return yield cps(getService(payload.id).appMessageSend, {
 			groupPk: payload.groupPk,
 			payload: payload.payload,
 		})
 	},
 	groupMetadataSubscribe: function*(payload) {
+		console.log('groupMetadataSub', encodeBuffer(payload.groupPk))
 		const eventsChannel = channel()
 		const client = (yield select((state) => queries.get(state, { id: payload.id }))) as
 			| Entity
@@ -365,7 +416,7 @@ export const transactions: Transactions = {
 		if (!client) {
 			throw new Error(`Unknown client ${payload.id}`)
 		}
-		const groupPkStr = Buffer.from(payload.groupPk).toString('utf-8')
+		const groupPkStr = encodeBuffer(payload.groupPk)
 		const sinceStr = client.lastMetadataCids[groupPkStr]
 		getService(payload.id).groupMetadataSubscribe(
 			{
@@ -450,6 +501,7 @@ export const transactions: Transactions = {
 		return eventsChannel
 	},
 	groupMessageSubscribe: function*(payload) {
+		console.log('groupMessageSub', payload.groupPk)
 		const eventsChannel = channel()
 		const client = (yield select((state) => queries.get(state, { id: payload.id }))) as
 			| Entity
@@ -504,11 +556,16 @@ export const transactions: Transactions = {
 	groupMessageList: function*() {
 		// do protocol things
 	},
-	groupInfo: function*() {
-		// do protocol things
+	groupInfo: function*(payload) {
+		return yield cps(getService(payload.id).groupInfo, {
+			groupPk: payload.groupPk,
+			contactPk: payload.contactPk,
+		})
 	},
-	activateGroup: function*() {
-		// do protocol things
+	activateGroup: function*(payload) {
+		return yield cps(getService(payload.id).activateGroup, {
+			groupPk: payload.groupPk,
+		})
 	},
 	deactivateGroup: function*() {
 		// do protocol things

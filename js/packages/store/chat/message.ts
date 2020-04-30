@@ -212,6 +212,7 @@ export const transactions: Transactions = {
 		)
 	},
 	send: function*(payload) {
+		console.log('send')
 		// Recup the conv
 		const conv = (yield select((state) => conversation.queries.get(state, { id: payload.id }))) as
 			| conversation.Entity
@@ -228,9 +229,10 @@ export const transactions: Transactions = {
 				sentDate: Date.now(),
 			}
 
+			console.log('appMessageSend to', conv.pk)
 			yield* protocol.transactions.client.appMessageSend({
 				id: conv.accountId,
-				groupPk: Buffer.from(conv.pk, 'utf-8'),
+				groupPk: Buffer.from(conv.pk, 'base64'), // need to set the pk in conv handlers
 				payload: Buffer.from(JSON.stringify(message), 'utf-8'),
 			})
 		}

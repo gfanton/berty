@@ -1,6 +1,6 @@
 import { createSlice, CaseReducer, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { fork, put, all, takeLeading, select, takeEvery, take } from 'redux-saga/effects'
+import { fork, put, all, takeLeading, select, takeEvery, take, delay } from 'redux-saga/effects'
 import faker from 'faker'
 import { Buffer } from 'buffer'
 import { simpleflake } from 'simpleflakes/lib/simpleflakes-legacy'
@@ -16,6 +16,7 @@ export type Entity = {
 	conversations: Array<string>
 	contacts: Array<string>
 	onboarded: boolean
+	bridgePort: number
 }
 
 export type Event = {
@@ -36,7 +37,7 @@ export type GlobalState = {
 
 export namespace Command {
 	export type Generate = void
-	export type Create = { name: string }
+	export type Create = { name: string; bridgePort: number }
 	export type Delete = { id: string }
 	export type SendContactRequest = {
 		id: string
@@ -45,7 +46,7 @@ export namespace Command {
 		contactPublicKey: string
 	}
 	export type Replay = { id: string }
-	export type Open = { id: string }
+	export type Open = { id: string; bridgePort: number }
 	export type Onboard = { id: string }
 }
 
@@ -61,6 +62,7 @@ export namespace Event {
 	export type Created = {
 		aggregateId: string
 		name: string
+		bridgePort: number
 	}
 	export type Deleted = { aggregateId: string }
 	export type Onboarded = { aggregateId: string }
@@ -131,6 +133,7 @@ const eventHandler = createSlice<State, EventsReducer>({
 				conversations: [],
 				contacts: [],
 				onboarded: false,
+				bridgePort: payload.bridgePort
 			}
 			return state
 		},
@@ -171,16 +174,17 @@ export const getProtocolClient = function*(id: string): Generator<unknown, proto
 }
 
 export const transactions: Transactions = {
-	open: function*({ id }) {
-		yield* protocol.transactions.client.start({ id })
+	open: function*({ id, bridgePort }) {
+		yield* protocol.transactions.client.start({ id, bridgePort })
 		yield* conversation.transactions.open({ accountId: id })
 
 		// subcribe to account log
 		const client = yield* getProtocolClient(id)
+		console.log('subscribing to', client.accountGroupPk)
 		yield fork(function*() {
 			const chan = yield* protocol.transactions.client.groupMetadataSubscribe({
 				id: client.id,
-				groupPk: new Buffer(client.accountGroupPk),
+				groupPk: Buffer.from(client.accountGroupPk, 'base64'),
 				// TODO: use last cursor
 				since: new Uint8Array(),
 				until: new Uint8Array(),
@@ -194,29 +198,36 @@ export const transactions: Transactions = {
 				}
 			}
 		})
-		yield* protocol.transactions.client.contactRequestEnable({ id })
+		yield* protocol.transactions.client.contactRequestReference({ id })
 	},
 	generate: function*() {
 		yield* transactions.create({ name: faker.name.firstName() })
 	},
-	create: function*({ name }) {
+	create: function*({ name, bridgePort }) {
 		// create an id for the account
 		const id = simpleflake().toString()
 
 		const event = events.created({
 			aggregateId: id,
 			name,
+			bridgePort
 		})
 		// open account
-		yield* transactions.open({ id })
+		yield* transactions.open({ id, bridgePort })
 		// get account PK
-		const client = yield* getProtocolClient(id)
+
+		yield* protocol.transactions.client.contactRequestResetReference({ id })
+		yield* protocol.transactions.client.contactRequestEnable({ id })
+
+		yield put(event)
+
+		/*const client = yield* getProtocolClient(id)
 
 		yield* protocol.transactions.client.appMetadataSend({
 			id,
-			groupPk: new Buffer(client.accountGroupPk),
+			groupPk: Buffer.from(client.accountGroupPk, 'base64'),
 			payload: new Buffer(JSON.stringify(event)),
-		})
+		})*/
 	},
 	delete: function*() {
 		yield put({ type: 'CLEAR_STORE' })
@@ -269,8 +280,8 @@ export const transactions: Transactions = {
 		}
 
 		const contact: berty.types.IShareableContact = {
-			pk: Buffer.from(payload.contactPublicKey, 'utf-8'),
-			publicRendezvousSeed: Buffer.from(payload.contactRdvSeed, 'utf-8'),
+			pk: Buffer.from(payload.contactPublicKey, 'base64'),
+			publicRendezvousSeed: Buffer.from(payload.contactRdvSeed, 'base64'),
 			metadata: Buffer.from(JSON.stringify(metadata), 'utf-8'),
 		}
 
@@ -291,7 +302,7 @@ export function* orchestrator() {
 			// start protocol clients
 			const accounts = (yield select(queries.getAll)) as Entity[]
 			for (const account of accounts) {
-				yield* transactions.open({ id: account.id })
+				yield* transactions.open({ id: account.id, bridgePort: account.bridgePort })
 				yield* contact.transactions.open({ accountId: account.id })
 			}
 		}),

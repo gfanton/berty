@@ -1,13 +1,13 @@
 import React, { useMemo, useEffect } from 'react'
 import { chat, protocol } from '@berty-tech/store'
 import { Provider as ReactReduxProvider, useDispatch, useSelector } from 'react-redux'
-import DevMenu from 'react-native-dev-menu'
+//import DevMenu from 'react-native-dev-menu'
 import { ActivityIndicator, Clipboard } from 'react-native'
 import { PersistGate } from 'redux-persist/integration/react'
 import { Buffer } from 'buffer'
 import { berty } from '@berty-tech/api'
 
-export const Recorder: React.FC = ({ children }) => {
+/*export const Recorder: React.FC = ({ children }) => {
 	React.useEffect(() => {
 		DevMenu.addItem('(Chat) Start Test Recorder', () => {
 			chat.recorder.start()
@@ -17,7 +17,7 @@ export const Recorder: React.FC = ({ children }) => {
 				chat.recorder
 					.createTest()
 					.replace(
-						'/* import reducer from YOUR_REDUCER_LOCATION_HERE */',
+						'/* import reducer from YOUR_REDUCER_LOCATION_HERE',
 						"import * as chat from '..'\nconst { reducer } = chat.init()",
 					),
 			)
@@ -26,7 +26,7 @@ export const Recorder: React.FC = ({ children }) => {
 	})
 
 	return null
-}
+}*/
 
 export const Provider: React.FC<{ config: chat.InitConfig }> = ({ config, children }) => {
 	const store = chat.init(config)
@@ -180,6 +180,7 @@ export const useContactRequestReference = () => {
 		return
 	}
 	const rdvSeed = client.contactRequestRdvSeed
+	console.log('client.contactRequestRdvSeed', client.contactRequestRdvSeed)
 	const pubKey = client.accountPk
 	const b64Name = Buffer.from(account.name, 'utf-8').toString('base64')
 	return `${b64Name} ${rdvSeed} ${pubKey}`
@@ -252,15 +253,14 @@ export const useConversationList = () => {
 	// TODO: handle multiple devices
 	const list = useSelector((state: chat.conversation.GlobalState) =>
 		client
-			? chat.conversation.queries
-					.list(state)
-					.filter(
+			? chat.conversation.queries.list(state)
+			: /*.filter(
 						(conv) =>
 							conv.kind === 'fake' ||
 							Object.values(conv.membersDevices).filter((m) => !m.includes(client.devicePk))
 								.length > 0,
-					)
-			: [],
+					)*/
+			  [],
 	)
 	return list
 }

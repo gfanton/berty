@@ -9,12 +9,14 @@ start.grpc-bridge.orbitdb: host ?= 127.0.0.1
 start.grpc-bridge.orbitdb:
 	cd $(berty_root) && $(MAKE) bazel.generate
 	cd $(berty_root) \
-		&& bazel run //go/cmd/berty -- demo -l /ip4/$(host)/tcp/1337/grpcws -d '/tmp/berty.demo.db'
+		&& bazel run //go/cmd/berty -- demo -l /ip4/$(host)/tcp/1337/grpcws -d '/tmp/berty_$(port).demo.db'
 
 .PHONY: start.grpc-bridge.berty
 start.grpc-bridge.berty: export PWD := $(PWD)
 start.grpc-bridge.berty: host ?= 127.0.0.1
+start.grpc-bridge.berty: port ?= 1337
+start.grpc-bridge.berty: proto ?= grpcws
 start.grpc-bridge.berty:
 	cd $(berty_root) && $(MAKE) bazel.generate
 	cd $(berty_root) \
-		&& bazel run //go/cmd/berty -- daemon -l /ip4/$(host)/tcp/1337/grpcws -d '/tmp/berty.db'
+		&& bazel run //go/cmd/berty -- daemon -l /ip4/$(host)/tcp/$(port)/$(proto)

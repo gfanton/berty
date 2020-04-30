@@ -77,7 +77,7 @@ export const recorder: {
 }
 
 export type InitConfig = {
-	storage: Storage
+	storage: any
 	middlewares?: Array<Middleware>
 }
 

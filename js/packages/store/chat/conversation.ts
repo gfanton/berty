@@ -78,7 +78,7 @@ export namespace Event {
 	export type Created = {
 		accountId: string
 		title: string
-		pk: Uint8Array
+		pk: string
 	} & (
 		| {
 				kind: berty.chatmodel.Conversation.Kind.OneToOne
@@ -180,13 +180,13 @@ const eventHandler = createSlice<State, EventsReducer>({
 		created: (state, { payload }) => {
 			const { accountId, pk, title } = payload
 			// Create id
-			const id = getAggregateId({ accountId, groupPk: pk })
+			const id = getAggregateId({ accountId, groupPk: Buffer.from(pk, 'base64') })
 			if (!state.aggregates[id]) {
 				const base = {
 					id,
 					accountId,
 					title,
-					pk: new Buffer(pk).toString(),
+					pk,
 					createdAt: Date.now(),
 					members: [],
 					messages: [],
@@ -244,6 +244,7 @@ const eventHandler = createSlice<State, EventsReducer>({
 					set.push(devicePkStr)
 				}
 			}
+			return state
 		},
 		startRead: (state, { payload: id }) => {
 			const conv = state.aggregates[id]
@@ -488,18 +489,36 @@ export function* orchestrator() {
 		takeEvery(protocol.events.client.accountContactRequestOutgoingEnqueued, function*({ payload }) {
 			const {
 				aggregateId: accountId,
-				event: { groupPk, contact: c },
+				event: { contact: c },
 			} = payload
 			// Recup metadata
 			if (!c || !c.metadata || !c.pk) {
 				throw new Error('Invalid contact')
 			}
+			const contactPk = payload.event.contact.pk
+			const groupInfo = (yield* protocol.transactions.client.groupInfo({
+				id: payload.aggregateId,
+				contactPk,
+			})) as berty.types.GroupInfo.IReply
+			const { group } = groupInfo
+			if (!group) {
+				return
+			}
+			const { publicKey: groupPk } = group
+			if (!groupPk) {
+				return
+			}
+			yield* protocol.transactions.client.activateGroup({
+				id: payload.aggregateId,
+				groupPk,
+			})
+			const groupPkStr = Buffer.from(groupPk).toString('base64')
 			const metadata = JSON.parse(new Buffer(c.metadata).toString('utf-8'))
 			yield put(
 				events.created({
 					accountId,
 					title: metadata.givenName,
-					pk: groupPk,
+					pk: groupPkStr,
 					kind: berty.chatmodel.Conversation.Kind.OneToOne,
 					contactId: contact.getAggregateId({ accountId, contactPk: c.pk }),
 				}),
