@@ -253,14 +253,14 @@ export const useConversationList = () => {
 	// TODO: handle multiple devices
 	const list = useSelector((state: chat.conversation.GlobalState) =>
 		client
-			? chat.conversation.queries.list(state)
-			: /*.filter(
+			? chat.conversation.queries
+					.list(state)
+					.filter(
 						(conv) =>
 							conv.kind === 'fake' ||
-							Object.values(conv.membersDevices).filter((m) => !m.includes(client.devicePk))
-								.length > 0,
-					)*/
-			  [],
+							Object.keys(conv.membersDevices).filter((m) => m !== client.accountPk).length > 0,
+					)
+			: [],
 	)
 	return list
 }
@@ -269,7 +269,7 @@ export const useConversationLength = () => {
 	return useConversationList().length
 }
 
-export const useGetConversation = (id: string): chat.conversation.Entity => {
+export const useGetConversation = (id: string): chat.conversation.Entity | undefined => {
 	const conversation = useSelector((state: chat.conversation.GlobalState) =>
 		chat.conversation.queries.get(state, { id }),
 	)
@@ -307,7 +307,10 @@ export const useGetListMessage = (list: any): chat.message.Entity[] => {
 
 export const useGetDateLastContactMessage = (id: string) => {
 	const conversation = useGetConversation(id)
-	const messages = useGetListMessage(conversation.messages)
+	const messages = useGetListMessage(conversation?.messages)
+	if (!conversation) {
+		return null
+	}
 	let lastDate
 	conversation.kind !== 'fake' &&
 		messages.length &&

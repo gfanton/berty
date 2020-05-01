@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Chat } from '@berty-tech/hooks'
+import { protocol } from '@berty-tech/store'
 import './App.css'
 import storage from 'redux-persist/lib/storage'
 
@@ -28,6 +29,7 @@ const CreateAccount: React.FC = () => {
 
 const Account: React.FC = () => {
 	const account = Chat.useAccount()
+	const client = Chat.useClient()
 	const link = Chat.useContactRequestReference()
 	return (
 		<>
@@ -35,6 +37,9 @@ const Account: React.FC = () => {
 			{account.name}
 			<br />
 			berty://{encodeURIComponent(link)}
+			<br />
+			<JSONed value={account} />
+			<JSONed value={client} />
 		</>
 	)
 }
@@ -52,7 +57,7 @@ const AddContact: React.FC = () => {
 	const name = b64Name && atob(b64Name)
 	return (
 		<>
-			<h2>Add contact</h2>
+			<h3>Add contact</h3>
 			<input
 				type='text'
 				placeholder='Deep link'
@@ -67,15 +72,21 @@ const AddContact: React.FC = () => {
 	)
 }
 
+const JSONed: React.FC<{ value: any }> = ({ value }) => (
+	<div style={{ whiteSpace: 'pre-wrap', textAlign: 'left' }}>{JSON.stringify(value, null, 4)}</div>
+)
+
 const Contacts: React.FC = () => {
 	const contacts = Chat.useAccountContacts()
 	return (
 		<>
 			<h2>Contacts</h2>
-			<div style={{ display: 'flex' }}>
+			<AddContact />
+			<h3>Contacts List</h3>
+			<div style={{ display: 'flex', flexWrap: 'wrap' }}>
 				{contacts.map((contact) => (
 					<div style={{ border: '1px solid black' }} key={contact.id}>
-						{JSON.stringify(contact, null, 2)}
+						<JSONed value={contact} />
 					</div>
 				))}
 			</div>
@@ -97,6 +108,7 @@ const Conversation: React.FC<{ convId: string }> = ({ convId }) => {
 			<>
 				{conv.title}
 				<br />
+				<JSONed value={conv} />
 				<div style={{ display: 'flex', flexDirection: 'column' }}>
 					{conv.messages.map((msg) => (
 						<Message key={msg} msgId={msg} />
@@ -119,24 +131,22 @@ const Conversation: React.FC<{ convId: string }> = ({ convId }) => {
 }
 
 const Conversations: React.FC = () => {
-	const [selected, setSelected] = useState('')
 	const conversations = Chat.useConversationList()
+	const [selected, setSelected] = useState('')
 	return (
 		<>
 			<h2>Conversations</h2>
 			<div style={{ display: 'flex' }}>
 				{conversations.map((conv) => {
 					if (conv.kind === 'fake') return null
-					const isSelected = selected === conv.id
 					return (
-						<div
-							style={{ border: '1px solid black', backgroundColor: isSelected && 'lightgrey' }}
+						<button
 							key={conv.id}
+							disabled={selected === conv.id}
+							onClick={() => setSelected(conv.id)}
 						>
 							{conv.title}
-							<br />
-							<button onClick={() => setSelected(conv.id)}>Select</button>
-						</div>
+						</button>
 					)
 				})}
 			</div>
@@ -156,6 +166,123 @@ const ClearStorage: React.FC = () => (
 	</button>
 )
 
+const Requests: React.FC = () => {
+	const outgoing = Chat.useAccountContactsWithOutgoingRequests()
+	const incoming = Chat.useAccountContactsWithIncomingRequests()
+	return (
+		<>
+			<h2>Requests</h2>
+			<h3>Incoming</h3>
+			{incoming.map((i) => (
+				<div style={{ border: '1px solid black' }} key={i.id}>
+					<JSONed value={i} />
+				</div>
+			))}
+			<h3>Outgoing</h3>
+			{outgoing.map((o) => (
+				<div style={{ border: '1px solid black' }} key={o.id}>
+					<JSONed key={o.id} value={o} />
+				</div>
+			))}
+		</>
+	)
+}
+
+let metadata: any[] = []
+let messages: any[] = []
+
+const DumpGroup: React.FC = () => {
+	const client = Chat.useClient()
+	const [groupPk, setGroupPk] = useState('')
+	const [mt, setMt] = useState([])
+	const [ms, setMs] = useState([])
+	return (
+		<>
+			<h2>Dump Group</h2>
+			<input value={groupPk} placeholder='groupPK' onChange={(e) => setGroupPk(e.target.value)} />
+			<button
+				onClick={() => {
+					const service = protocol.client.getService(client.id)
+					const gpkBuf = Buffer.from(groupPk, 'base64')
+					metadata = []
+					messages = []
+					service.groupMessageList({ groupPk: gpkBuf }, (...args: any[]) => {
+						if (args[1]?.message) {
+							const msg = JSON.parse(Buffer.from(args[1].message).toString('utf-8'))
+							console.log('message:', msg)
+							args[1] = { ...args[1], message: msg }
+						}
+						messages = [...messages, args]
+						setMs(messages)
+						console.log('messages callback', ...args)
+					})
+					service.groupMetadataList({ groupPk: gpkBuf }, (...args: any[]) => {
+						if (args[1]?.event) {
+							const event = protocol.client.decodeMetadataEvent(args[1])
+							args[1] = { ...args[1], event }
+						}
+						metadata = [...metadata, args]
+						setMt(metadata)
+						console.log('metadata callback', ...args)
+					})
+				}}
+			>
+				Dump
+			</button>
+			<h3>Metadata</h3>
+			<JSONed value={mt} />
+			<h3>Messages</h3>
+			<JSONed value={ms} />
+		</>
+	)
+}
+
+const Tools: React.FC = () => {
+	return (
+		<>
+			<DumpGroup />
+		</>
+	)
+}
+
+type TabsDef = {
+	Account: typeof Account
+	Contacts: typeof Contacts
+	Requests: typeof Requests
+	Conversations: typeof Conversations
+	Tools: typeof Tools
+}
+
+const TABS: TabsDef = {
+	Account: Account,
+	Contacts: Contacts,
+	Requests: Requests,
+	Conversations: Conversations,
+	Tools: Tools,
+}
+
+const Tabs: React.FC = () => {
+	const [selected, setSelected] = useState('Account')
+	if (!(selected in TABS)) {
+		return <>Error: Unknown tab {selected}</>
+	}
+	const TabContent = TABS[selected as keyof TabsDef]
+	return (
+		<>
+			<div>
+				{Object.keys(TABS).map((key) => (
+					<button key={key} disabled={key === selected} onClick={() => setSelected(key)}>
+						{key}
+					</button>
+				))}
+			</div>
+			<div>
+				<TabContent />
+			</div>
+		</>
+	)
+}
+
 function App() {
 	return (
 		<Chat.Provider config={{ storage }}>
@@ -163,10 +290,7 @@ function App() {
 				<h1>Berty web dev</h1>
 				<ClearStorage />
 				<AccountGate>
-					<Account />
-					<AddContact />
-					<Contacts />
-					<Conversations />
+					<Tabs />
 				</AccountGate>
 			</div>
 		</Chat.Provider>

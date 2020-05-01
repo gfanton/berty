@@ -1,8 +1,9 @@
 import { composeReducers } from 'redux-compose'
 import { CaseReducer, PayloadAction, createSlice } from '@reduxjs/toolkit'
-import { all, takeLeading, put, takeEvery, select } from 'redux-saga/effects'
+import { all, put, takeEvery, select } from 'redux-saga/effects'
 import { Buffer } from 'buffer'
 import { berty } from '@berty-tech/api'
+import { makeDefaultCommandsSagas, strToBuf, bufToStr, jsonToBuf } from '../utils'
 
 import * as protocol from '../protocol'
 import { conversation } from '../chat'
@@ -45,7 +46,7 @@ export namespace Query {
 	export type List = {}
 	export type Get = { id: string }
 	export type GetLength = void
-	export type GetList = { list: any }
+	export type GetList = { list: Entity['id'][] }
 }
 
 export namespace Event {
@@ -130,6 +131,9 @@ const eventHandler = createSlice<State, EventsReducer>({
 	initialState,
 	reducers: {
 		sent: (state, { payload: { aggregateId, message, receivedDate, isMe } }) => {
+			if (state.aggregates[aggregateId]) {
+				return state
+			}
 			switch (message.type) {
 				case AppMessageType.UserMessage:
 					state.aggregates[aggregateId] = {
@@ -190,18 +194,13 @@ export const queries: QueryReducer = {
 	get: (state, { id }) => getAggregatesWithFakes(state)[id],
 	getLength: (state) => Object.keys(getAggregatesWithFakes(state)).length,
 	getList: (state, { list }) => {
-		const messages = list.map((_) => {
-			const ret = state.chat.message.aggregates[_]
+		const messages = list.map((id) => {
+			const ret = state.chat.message.aggregates[id]
 			return ret
 		})
-		return messages
+		return messages as Entity[]
 	},
 }
-
-const getAggregateId: (kwargs: { accountId: string; groupPk: Uint8Array }) => string = ({
-	accountId,
-	groupPk,
-}) => Buffer.concat([Buffer.from(accountId, 'utf-8'), Buffer.from(groupPk)]).toString('base64')
 
 export const transactions: Transactions = {
 	delete: function*({ id }) {
@@ -232,8 +231,8 @@ export const transactions: Transactions = {
 			console.log('appMessageSend to', conv.pk)
 			yield* protocol.transactions.client.appMessageSend({
 				id: conv.accountId,
-				groupPk: Buffer.from(conv.pk, 'base64'), // need to set the pk in conv handlers
-				payload: Buffer.from(JSON.stringify(message), 'utf-8'),
+				groupPk: strToBuf(conv.pk), // need to set the pk in conv handlers
+				payload: jsonToBuf(message),
 			})
 		}
 	},
@@ -254,17 +253,9 @@ export const getProtocolClient = function*(id: string): Generator<unknown, proto
 
 export function* orchestrator() {
 	yield all([
-		takeLeading(commands.delete, function*({ payload }) {
-			yield* transactions.delete(payload)
-		}),
-		takeLeading(commands.send, function*({ payload }) {
-			yield* transactions.send(payload)
-		}),
-		takeLeading(commands.hide, function*({ payload }) {
-			yield* transactions.hide(payload)
-		}),
+		...makeDefaultCommandsSagas(commands, transactions),
 		takeEvery('protocol/GroupMessageEvent', function*(
-			action: PayloadAction<berty.protocol.GroupMessageEvent & { aggregateId: string }>,
+			action: PayloadAction<berty.types.GroupMessageEvent & { aggregateId: string }>,
 		) {
 			// create an id for the message
 			const idBuf = action.payload.eventContext?.id
@@ -276,7 +267,7 @@ export function* orchestrator() {
 				return
 			}
 			const message: AppMessage = JSON.parse(new Buffer(action.payload.message).toString('utf-8'))
-			const aggregateId = Buffer.from(idBuf).toString('utf-8')
+			const aggregateId = bufToStr(idBuf)
 			// create the message entity
 			const existingMessage = (yield select((state) => queries.get(state, { id: aggregateId }))) as
 				| Entity
@@ -285,7 +276,7 @@ export function* orchestrator() {
 				return
 			}
 			// Reconstitute the convId
-			const convId = getAggregateId({
+			const convId = conversation.getAggregateId({
 				accountId: action.payload.aggregateId,
 				groupPk: groupPkBuf,
 			})
@@ -314,7 +305,7 @@ export function* orchestrator() {
 			if (message.type === AppMessageType.UserMessage) {
 				// add message to corresponding conversation
 				yield* conversation.transactions.addMessage({
-					aggregateId: getAggregateId({
+					aggregateId: conversation.getAggregateId({
 						accountId: action.payload.aggregateId,
 						groupPk: groupPkBuf,
 					}),
@@ -330,7 +321,7 @@ export function* orchestrator() {
 				yield* protocol.transactions.client.appMessageSend({
 					id: conv.accountId,
 					groupPk: groupPkBuf,
-					payload: Buffer.from(JSON.stringify(acknowledge), 'utf-8'),
+					payload: jsonToBuf(acknowledge),
 				})
 			}
 		}),

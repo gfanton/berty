@@ -5,7 +5,7 @@ import createSagaMiddleware from 'redux-saga'
 import createRecorder from 'redux-test-recorder'
 import mem from 'mem'
 import createSagaMonitor from '@clarketm/saga-monitor'
-import { Storage, persistReducer, persistStore } from 'redux-persist'
+import { persistReducer, persistStore } from 'redux-persist'
 
 import * as protocol from '../protocol'
 import * as account from './account'

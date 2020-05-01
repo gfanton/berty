@@ -1,31 +1,14 @@
-import {
-	ProtocolServiceClient,
-	bridge,
-	WebsocketTransport,
-	//mockBridge,
-	//protocolServiceHandlerFactory,
-} from '@berty-tech/grpc-bridge'
+import { ProtocolServiceClient, bridge } from '@berty-tech/grpc-bridge'
 import { grpc } from '@improbable-eng/grpc-web'
-import { RPCImpl } from 'protobufjs'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import {
-	all,
-	takeLeading,
-	put,
-	putResolve,
-	cps,
-	takeEvery,
-	call,
-	select,
-	delay,
-} from 'redux-saga/effects'
-import { channel } from 'redux-saga'
+import { all, put, putResolve, cps, takeEvery } from 'redux-saga/effects'
+import { channel, Channel } from 'redux-saga'
 import * as gen from './client.gen'
 import * as api from '@berty-tech/api'
-import { Buffer } from 'buffer'
 import Case from 'case'
-import { Events as EventsGen } from '../types/events.gen'
+import * as evgen from '../types/events.gen'
+import { makeDefaultReducers, makeDefaultCommandsSagas, bufToStr, bufToJSON } from '../utils'
 
 export type Entity = {
 	id: string
@@ -33,9 +16,6 @@ export type Entity = {
 	accountPk: string
 	devicePk: string
 	accountGroupPk: string
-	lastMetadataCids: { [key: string]: string }
-	//
-	lastMessageCids: { [key: string]: string }
 	bridgePort: number
 }
 
@@ -61,7 +41,7 @@ export type Queries = {
 	getAll: (state: GlobalState) => Entity[]
 }
 
-export type Events = EventsGen<State> & {
+export type Events = evgen.Events<State> & {
 	started: (
 		state: State,
 		action: {
@@ -83,14 +63,6 @@ export type Events = EventsGen<State> & {
 			}
 		},
 	) => State
-	lastMetadataCidUpdated: (
-		state: State,
-		action: { payload: { aggregateId: string; groupPk: string; cid: string } },
-	) => State
-	lastMessageCidUpdated: (
-		state: State,
-		action: { payload: { aggregateId: string; groupPk: string; cid: string } },
-	) => State
 	deleted: (state: State, action: PayloadAction<{ aggregateId: string }>) => State
 }
 
@@ -101,89 +73,52 @@ export type Transactions = {
 	) => State
 		? (payload: TPayload) => Generator
 		: never
+} & {
+	listenToGroupMetadata: (payload: { clientId: string; groupPk: Uint8Array }) => Generator
+	listenToGroupMessages: (payload: { clientId: string; groupPk: Uint8Array }) => Generator
+	listenToGroup: (payload: { clientId: string; groupPk: Uint8Array }) => Generator
 }
 
 const initialState: State = {
 	aggregates: {},
 }
 
+const commandsNames = [...Object.keys(gen.Methods), 'start', 'delete']
+
 const commandHandler = createSlice<State, Commands>({
 	name: 'protocol/client/command',
 	initialState,
-	reducers: {
-		start: (state) => state,
-		delete: (state) => state,
-		instanceExportData: (state) => state,
-		instanceGetConfiguration: (state) => state,
-
-		contactRequestReference: (state) => state,
-		contactRequestDisable: (state) => state,
-		contactRequestEnable: (state) => state,
-		contactRequestResetReference: (state) => state,
-		contactRequestSend: (state) => state,
-		contactRequestAccept: (state) => state,
-		contactRequestDiscard: (state) => state,
-
-		contactBlock: (state) => state,
-		contactUnblock: (state) => state,
-		contactAliasKeySend: (state) => state,
-
-		multiMemberGroupCreate: (state) => state,
-		multiMemberGroupJoin: (state) => state,
-		multiMemberGroupLeave: (state) => state,
-		multiMemberGroupAliasResolverDisclose: (state) => state,
-		multiMemberGroupAdminRoleGrant: (state) => state,
-
-		multiMemberGroupInvitationCreate: (state) => state,
-
-		appMetadataSend: (state) => state,
-		appMessageSend: (state) => state,
-		groupMetadataSubscribe: (state) => state,
-		groupMessageSubscribe: (state) => state,
-
-		groupMetadataList: (state) => state,
-		groupMessageList: (state) => state,
-		groupInfo: (state) => state,
-		activateGroup: (state) => state,
-		deactivateGroup: (state) => state,
-	},
+	// we don't change state on commands
+	reducers: makeDefaultReducers(commandsNames),
 })
 
-const intoBuffer = (
-	thing: Buffer | Uint8Array | { [key: string]: number } | { [key: number]: number },
-): Buffer => {
-	// redux-test-recorder f up the Uint8Arrays so we have to use this monster
-	if (thing instanceof Buffer) {
-		return thing
-	}
-	if (thing instanceof Uint8Array) {
-		return Buffer.from(thing)
-	}
-	return Buffer.from(Object.values(thing))
-}
+const eventsNames = [
+	...Object.keys(evgen.EventsNames),
+	'started',
+	'deleted',
+	'contactRequestRdvSeedUpdated',
+]
 
 const eventHandler = createSlice<State, Events>({
 	name: 'protocol/client/event',
 	initialState,
 	reducers: {
+		...makeDefaultReducers(eventsNames),
 		started: (state, action) => {
-			const client = state.aggregates[action.payload.aggregateId]
-			state.aggregates[action.payload.aggregateId] = {
-				id: action.payload.aggregateId,
-				accountPk: action.payload.accountPk,
-				devicePk: action.payload.devicePk,
-				accountGroupPk: action.payload.accountGroupPk,
-				lastMetadataCids: client?.lastMessageCids || {},
-				lastMessageCids: client?.lastMessageCids || {},
-				bridgePort: client?.bridgePort || action.payload.bridgePort,
+			if (!state.aggregates[action.payload.aggregateId]) {
+				state.aggregates[action.payload.aggregateId] = {
+					id: action.payload.aggregateId,
+					accountPk: action.payload.accountPk,
+					devicePk: action.payload.devicePk,
+					accountGroupPk: action.payload.accountGroupPk,
+					bridgePort: action.payload.bridgePort,
+				}
 			}
 			return state
 		},
 		contactRequestRdvSeedUpdated: (state, { payload }) => {
 			const client = state.aggregates[payload.aggregateId]
-			console.log('crrsu', payload.publicRendezvousSeed)
 			if (client) {
-				console.log('found client')
 				client.contactRequestRdvSeed = payload.publicRendezvousSeed
 			}
 			return state
@@ -192,47 +127,6 @@ const eventHandler = createSlice<State, Events>({
 			delete state.aggregates[action.payload.aggregateId]
 			return state
 		},
-		lastMetadataCidUpdated: (state, action) => {
-			if (state.aggregates[action.payload.aggregateId]) {
-				state.aggregates[action.payload.aggregateId].lastMetadataCids[action.payload.groupPk] =
-					action.payload.cid
-			}
-			return state
-		},
-		lastMessageCidUpdated: (state, action) => {
-			if (state.aggregates[action.payload.aggregateId]) {
-				state.aggregates[action.payload.aggregateId].lastMessageCids[action.payload.groupPk] =
-					action.payload.cid
-			}
-			return state
-		},
-
-		undefined: (state) => state,
-
-		groupMemberDeviceAdded: (state) => state,
-		groupDeviceSecretAdded: (state) => state,
-
-		accountGroupJoined: (state) => state,
-		accountGroupLeft: (state) => state,
-
-		accountContactRequestDisabled: (state) => state,
-		accountContactRequestEnabled: (state) => state,
-		accountContactRequestReferenceReset: (state) => state,
-		accountContactRequestOutgoingEnqueued: (state) => state,
-		accountContactRequestOutgoingSent: (state) => state,
-		accountContactRequestIncomingReceived: (state) => state,
-		accountContactRequestIncomingDiscarded: (state) => state,
-		accountContactRequestIncomingAccepted: (state) => state,
-		accountContactBlocked: (state) => state,
-		accountContactUnblocked: (state) => state,
-
-		contactAliasKeyAdded: (state) => state,
-
-		multiMemberGroupAliasResolverAdded: (state) => state,
-		multiMemberGroupInitialMemberAnnounced: (state) => state,
-		multiMemberGroupAdminRoleGranted: (state) => state,
-
-		groupMetadataPayloadSent: (state) => state,
 	},
 })
 
@@ -252,7 +146,7 @@ const eventNameFromValue = (value: number) => {
 }
 
 const services: { [key: string]: ProtocolServiceClient } = {}
-const getService = (id: string) => {
+export const getService = (id: string) => {
 	const service = services[id]
 	if (!service) {
 		throw new Error(`Service ${id} not found`)
@@ -260,11 +154,136 @@ const getService = (id: string) => {
 	return service
 }
 
-const ENCODING = 'base64'
-const decodeBuffer = (pk: string) => Buffer.from(pk, ENCODING)
-const encodeBuffer = (buf: Uint8Array) => Buffer.from(buf).toString(ENCODING)
+export const decodeMetadataEvent = (response: api.berty.types.IGroupMetadataEvent) => {
+	const eventType = response?.metadata?.eventType
+	if (eventType == null) {
+		return undefined
+	}
+	const eventsMap: { [key: string]: string } = {
+		EventTypeAccountContactRequestIncomingReceived: 'AccountContactRequestReceived',
+		EventTypeAccountContactRequestIncomingAccepted: 'AccountContactRequestAccepted',
+		EventTypeAccountContactRequestIncomingDiscarded: 'AccountContactRequestDiscarded',
+		EventTypeAccountContactRequestOutgoingEnqueued: 'AccountContactRequestEnqueued',
+		EventTypeAccountContactRequestOutgoingSent: 'AccountContactRequestSent',
+		EventTypeGroupMemberDeviceAdded: 'GroupAddMemberDevice',
+	}
+	const eventName = eventNameFromValue(eventType)
+	if (eventName === undefined) {
+		throw new Error(`Invalid event type ${eventType}`)
+	}
+	const protocol: { [key: string]: any } = api.berty.types
+	const event = protocol[eventName.replace('EventType', '')] || protocol[eventsMap[eventName]]
+	if (!event) {
+		console.warn("Don't know how to decode", eventName)
+		return undefined
+	}
+	const decodedEvent = event.decode(response.event)
+	return decodedEvent
+}
+
+const makeMetadataHandler = (id: string, eventsChannel: Channel<unknown>) => (
+	error: Error | null,
+	response?: api.berty.types.IGroupMetadataEvent,
+) => {
+	if (error) {
+		// TODO: log error
+		throw error
+	}
+	if (!response) {
+		console.log('closing')
+		eventsChannel.close()
+		return
+	}
+	if (!response.event) {
+		console.error('No event')
+		return
+	}
+	if (!response.eventContext?.id) {
+		console.error('No event cid')
+		return
+	}
+
+	if (!response.metadata?.eventType) {
+		console.error('No eventtype')
+		return
+	}
+	// if the event is defined by chat
+
+	const eventType = response.metadata?.eventType
+	if (eventType == null) {
+		return
+	}
+	if (eventType === api.berty.types.EventType.EventTypeGroupMetadataPayloadSent) {
+		eventsChannel.put(
+			events.groupMetadataPayloadSent({
+				aggregateId: id,
+				eventContext: response.eventContext || {},
+				metadata: response.metadata,
+				event: bufToJSON(response.event),
+			}),
+		)
+		return
+	}
+	const eventName = eventNameFromValue(eventType)
+	if (eventName === undefined) {
+		throw new Error(`Invalid event type ${eventType}`)
+	}
+	const type = `${eventHandler.name}/${Case.camel(eventName.replace('EventType', ''))}`
+	eventsChannel.put({
+		type,
+		payload: {
+			aggregateId: id,
+			eventContext: response.eventContext,
+			headers: response.metadata,
+			event: decodeMetadataEvent(response),
+		},
+	})
+}
+
+const makeMessageHandler = (id: string, eventsChannel: Channel<unknown>) => (
+	error: Error | null,
+	response?: api.berty.types.IGroupMessageEvent,
+) => {
+	if (error) {
+		// TODO: log error
+		throw error
+	}
+
+	if (response === undefined) {
+		eventsChannel.close()
+		return
+	}
+
+	if (!response.eventContext?.id) {
+		console.error('No event cid')
+		return
+	}
+
+	const type = 'protocol/GroupMessageEvent'
+	eventsChannel.put({
+		type,
+		payload: {
+			aggregateId: id,
+			eventContext: response.eventContext,
+			headers: response.headers,
+			message: response.message,
+		},
+	})
+}
+
+// call cps on the service method by default
+const defaultTransactions = (Object.keys(gen.Methods) as (keyof gen.Commands<State>)[]).reduce(
+	(txs, methodName) => {
+		txs[methodName] = function*({ id, ...payload }: { id: string }) {
+			return yield (cps as any)(getService(id)[methodName], payload)
+		}
+		return txs
+	},
+	{} as Transactions,
+) as Transactions
 
 export const transactions: Transactions = {
+	...defaultTransactions,
 	start: function*({ id, bridgePort }) {
 		if (services[id] != null) {
 			return
@@ -277,7 +296,7 @@ export const transactions: Transactions = {
 		const port = bridgePort || 1337
 		const brdg = bridge({
 			host: `http://127.0.0.1:${port}`,
-			transport: grpc.CrossBrowserHttpTransport({ withCredentials: false, debug: true }),
+			transport: grpc.CrossBrowserHttpTransport({ withCredentials: false }),
 			//transport: WebsocketTransport()
 		})
 		services[id] = new ProtocolServiceClient(brdg)
@@ -292,9 +311,9 @@ export const transactions: Transactions = {
 		yield putResolve(
 			events.started({
 				aggregateId: id,
-				accountPk: encodeBuffer(accountPk),
-				devicePk: encodeBuffer(devicePk),
-				accountGroupPk: encodeBuffer(accountGroupPk),
+				accountPk: bufToStr(accountPk),
+				devicePk: bufToStr(devicePk),
+				accountGroupPk: bufToStr(accountGroupPk),
 				bridgePort,
 			}),
 		)
@@ -302,12 +321,6 @@ export const transactions: Transactions = {
 	delete: function*({ id }) {
 		services[id]?.end()
 		yield put(events.deleted({ aggregateId: id }))
-	},
-	instanceGetConfiguration: function*(payload) {
-		// do protocol things
-	},
-	instanceExportData: function*(payload) {
-		// do protocol things
 	},
 	contactRequestReference: function*(payload) {
 		const reply = (yield cps(
@@ -318,14 +331,11 @@ export const transactions: Transactions = {
 			yield put(
 				events.contactRequestRdvSeedUpdated({
 					aggregateId: payload.id,
-					publicRendezvousSeed: encodeBuffer(reply.publicRendezvousSeed),
+					publicRendezvousSeed: bufToStr(reply.publicRendezvousSeed),
 				}),
 			)
 		}
 		return reply
-	},
-	contactRequestDisable: function*(payload) {
-		// do protocol things
 	},
 	contactRequestEnable: function*(payload) {
 		console.log('enabling contact request')
@@ -340,312 +350,89 @@ export const transactions: Transactions = {
 		yield put(
 			events.contactRequestRdvSeedUpdated({
 				aggregateId: payload.id,
-				publicRendezvousSeed: encodeBuffer(reply.publicRendezvousSeed),
+				publicRendezvousSeed: bufToStr(reply.publicRendezvousSeed),
 			}),
 		)
 		return reply
 	},
-	contactRequestResetReference: function*(payload) {
-		return yield cps(getService(payload.id).contactRequestResetReference, {})
-	},
-	contactRequestSend: function*(payload) {
-		return yield cps(getService(payload.id).contactRequestSend, {
-			contact: payload.contact,
-		})
-	},
-	contactRequestAccept: function*(payload) {
-		return yield cps(getService(payload.id).contactRequestAccept, {
-			contactPk: payload.contactPk,
-		})
-	},
-	contactRequestDiscard: function*(payload) {
-		return yield cps(getService(payload.id).contactRequestDiscard, {
-			contactPk: payload.contactPk,
-		})
-	},
-
-	contactBlock: function*(payload) {
-		// do protocol things
-	},
-	contactUnblock: function*(payload) {
-		// do protocol things
-	},
-	contactAliasKeySend: function*(payload) {
-		// do protocol things
-	},
-
-	multiMemberGroupCreate: function*(payload) {
-		return yield cps(getService(payload.id).multiMemberGroupCreate, {})
-	},
-	multiMemberGroupJoin: function*(payload) {
-		return yield cps(getService(payload.id).multiMemberGroupJoin, { group: payload.group })
-	},
-	multiMemberGroupLeave: function*(payload) {
-		// do protocol things
-	},
-	multiMemberGroupAliasResolverDisclose: function*(payload) {
-		// do protocol things
-	},
-	multiMemberGroupAdminRoleGrant: function*(payload) {
-		// do protocol things
-	},
-
-	multiMemberGroupInvitationCreate: function*(payload) {
-		// do protocol things
-	},
-	appMetadataSend: function*(payload) {
-		console.log('metadata send')
-		return yield cps(getService(payload.id).appMetadataSend, {
-			groupPk: payload.groupPk,
-			payload: payload.payload,
-		})
-	},
-	appMessageSend: function*(payload) {
-		console.log('message send')
-		return yield cps(getService(payload.id).appMessageSend, {
-			groupPk: payload.groupPk,
-			payload: payload.payload,
-		})
-	},
-	groupMetadataSubscribe: function*(payload) {
-		console.log('groupMetadataSub', encodeBuffer(payload.groupPk))
+	groupMetadataSubscribe: function*({ id, groupPk }) {
 		const eventsChannel = channel()
-		const client = (yield select((state) => queries.get(state, { id: payload.id }))) as
-			| Entity
-			| undefined
-		if (!client) {
-			throw new Error(`Unknown client ${payload.id}`)
-		}
-		const groupPkStr = encodeBuffer(payload.groupPk)
-		const sinceStr = client.lastMetadataCids[groupPkStr]
-		getService(payload.id).groupMetadataSubscribe(
-			{
-				groupPk: payload.groupPk,
-				since: sinceStr ? Buffer.from(sinceStr, 'utf-8') : undefined,
-			},
-			(error, response) => {
-				if (error) {
-					// TODO: log error
-					throw error
-				}
-				if (!response?.event) {
-					console.error('No event')
-					return
-				}
-				if (!response?.eventContext?.id) {
-					console.error('No event cid')
-					return
-				}
-
-				const cidStr = Buffer.from(response.eventContext.id).toString('utf-8')
-				eventsChannel.put(
-					events.lastMetadataCidUpdated({
-						aggregateId: payload.id,
-						groupPk: groupPkStr,
-						cid: cidStr,
-					}),
-				)
-
-				if (!response?.metadata?.eventType) {
-					console.error('No eventtype')
-					return
-				}
-				// if the event is defined by chat
-
-				const eventType = response?.metadata?.eventType
-				if (eventType == null) {
-					return
-				}
-				if (eventType === api.berty.types.EventType.EventTypeGroupMetadataPayloadSent) {
-					eventsChannel.put(
-						events.groupMetadataPayloadSent({
-							aggregateId: `${payload.id}`,
-							eventContext: response.eventContext || {},
-							metadata: response.metadata,
-							event: JSON.parse(Buffer.from(response.event).toString()),
-						}),
-					)
-					return
-				}
-
-				const eventsMap: { [key: string]: string } = {
-					EventTypeAccountContactRequestIncomingReceived: 'AccountContactRequestReceived',
-					EventTypeAccountContactRequestIncomingAccepted: 'AccountContactRequestAccepted',
-					EventTypeAccountContactRequestIncomingDiscarded: 'AccountContactRequestDiscarded',
-					EventTypeAccountContactRequestOutgoingEnqueued: 'AccountContactRequestEnqueued',
-					EventTypeAccountContactRequestOutgoingSent: 'AccountContactRequestSent',
-					EventTypeGroupMemberDeviceAdded: 'GroupAddMemberDevice',
-				}
-				const eventName = eventNameFromValue(eventType)
-				if (eventName === undefined) {
-					throw new Error(`Invalid event type ${eventType}`)
-				}
-				const protocol: { [key: string]: any } = api.berty.types
-				const event = protocol[eventName.replace('EventType', '')] || protocol[eventsMap[eventName]]
-				if (!event) {
-					console.warn("Don't know how to decode", eventName)
-					return
-				}
-				const type = `${eventHandler.name}/${Case.camel(eventName.replace('EventType', ''))}`
-				eventsChannel.put({
-					type,
-					payload: {
-						aggregateId: `${payload.id}`,
-						eventContext: response.eventContext,
-						headers: response.metadata,
-						event: event.decode(response.event),
-					},
-				})
-			},
-		)
+		getService(id).groupMetadataSubscribe({ groupPk }, makeMetadataHandler(id, eventsChannel))
 		return eventsChannel
 	},
-	groupMessageSubscribe: function*(payload) {
-		console.log('groupMessageSub', payload.groupPk)
+	groupMessageSubscribe: function*({ id, groupPk }) {
 		const eventsChannel = channel()
-		const client = (yield select((state) => queries.get(state, { id: payload.id }))) as
-			| Entity
-			| undefined
-		if (!client) {
-			throw new Error(`Unknown client ${payload.id}`)
-		}
-		const groupPkStr = Buffer.from(payload.groupPk).toString('utf-8')
-		const sinceStr = client.lastMessageCids[groupPkStr]
-		getService(payload.id).groupMessageSubscribe(
-			{
-				groupPk: payload.groupPk,
-				since: sinceStr ? Buffer.from(sinceStr, 'utf-8') : undefined,
-			},
-			(error, response) => {
-				if (error) {
-					// TODO: log error
-					throw error
-				}
-
-				if (!response?.eventContext?.id) {
-					console.error('No event cid')
-					return
-				}
-
-				const cidStr = Buffer.from(response.eventContext.id).toString('utf-8')
-				eventsChannel.put(
-					events.lastMessageCidUpdated({
-						aggregateId: payload.id,
-						groupPk: groupPkStr,
-						cid: cidStr,
-					}),
-				)
-
-				const type = 'protocol/GroupMessageEvent'
-				eventsChannel.put({
-					type,
-					payload: {
-						aggregateId: `${payload.id}`,
-						eventContext: response.eventContext,
-						headers: response.headers,
-						message: response.message,
-					},
-				})
-			},
-		)
+		getService(id).groupMessageSubscribe({ groupPk }, makeMessageHandler(id, eventsChannel))
 		return eventsChannel
 	},
-	groupMetadataList: function*() {
-		// do protocol things
+	groupMetadataList: function*({ id, groupPk }) {
+		const eventsChannel = channel()
+		getService(id).groupMetadataList({ groupPk }, makeMetadataHandler(id, eventsChannel))
+		return eventsChannel
 	},
-	groupMessageList: function*() {
-		// do protocol things
+	groupMessageList: function*({ id, groupPk }) {
+		const eventsChannel = channel()
+		getService(id).groupMessageList({ groupPk }, makeMessageHandler(id, eventsChannel))
+		return eventsChannel
 	},
-	groupInfo: function*(payload) {
-		return yield cps(getService(payload.id).groupInfo, {
-			groupPk: payload.groupPk,
-			contactPk: payload.contactPk,
+	listenToGroupMetadata: function*({ clientId, groupPk }) {
+		const chan1 = yield* transactions.groupMetadataSubscribe({
+			id: clientId,
+			groupPk,
+			// TODO: use last cursor
+			since: new Uint8Array(),
+			until: new Uint8Array(),
+			goBackwards: false,
+		})
+		yield takeEvery(chan1, function*(action) {
+			yield put(action)
+			if (action.type === events.groupMetadataPayloadSent.type) {
+				yield put((action as any).payload.event)
+			}
+		})
+		const chan2 = yield* transactions.groupMetadataList({
+			id: clientId,
+			groupPk,
+		})
+		yield takeEvery(chan2, function*(action) {
+			yield put(action)
+			if (action.type === events.groupMetadataPayloadSent.type) {
+				yield put((action as any).payload.event)
+			}
 		})
 	},
-	activateGroup: function*(payload) {
-		return yield cps(getService(payload.id).activateGroup, {
-			groupPk: payload.groupPk,
+	listenToGroupMessages: function*({ clientId, groupPk }) {
+		const chan1 = yield* transactions.groupMessageSubscribe({
+			id: clientId,
+			groupPk,
+			// TODO: use last cursor
+			since: new Uint8Array(),
+			until: new Uint8Array(),
+			goBackwards: false,
+		})
+		yield takeEvery(chan1, function*(action) {
+			yield put(action)
+			if (action.type === events.groupMetadataPayloadSent.type) {
+				yield put((action as any).payload.event)
+			}
+		})
+		const chan2 = yield* transactions.groupMessageList({
+			id: clientId,
+			groupPk,
+		})
+		yield takeEvery(chan2, function*(action) {
+			yield put(action)
+			if (action.type === events.groupMetadataPayloadSent.type) {
+				yield put((action as any).payload.event)
+			}
 		})
 	},
-	deactivateGroup: function*() {
-		// do protocol things
+	listenToGroup: function*(payload) {
+		yield* transactions.listenToGroupMetadata(payload)
+		yield* transactions.listenToGroupMessages(payload)
 	},
 }
 
 export function* orchestrator() {
-	yield all([
-		takeLeading(commands.start, function*(action) {
-			yield* transactions.start(action.payload)
-		}),
-		takeLeading(commands.delete, function*(action) {
-			yield* transactions.delete(action.payload)
-		}),
-		takeLeading(commands.instanceExportData, function*(action) {
-			yield* transactions.instanceExportData(action.payload)
-		}),
-
-		takeLeading(commands.contactRequestReference, function*(action) {
-			yield* transactions.contactRequestReference(action.payload)
-		}),
-		takeLeading(commands.contactRequestDisable, function*(action) {
-			yield* transactions.contactRequestDisable(action.payload)
-		}),
-		takeLeading(commands.contactRequestEnable, function*(action) {
-			yield* transactions.contactRequestEnable(action.payload)
-		}),
-		takeLeading(commands.contactRequestResetReference, function*(action) {
-			yield* transactions.contactRequestResetReference(action.payload)
-		}),
-		takeLeading(commands.contactRequestSend, function*(action) {
-			yield* transactions.contactRequestSend(action.payload)
-		}),
-		takeLeading(commands.contactRequestAccept, function*(action) {
-			yield* transactions.contactRequestAccept(action.payload)
-		}),
-		takeLeading(commands.contactRequestDiscard, function*(action) {
-			yield* transactions.contactRequestDiscard(action.payload)
-		}),
-
-		takeLeading(commands.contactBlock, function*(action) {
-			yield* transactions.contactBlock(action.payload)
-		}),
-		takeLeading(commands.contactUnblock, function*(action) {
-			yield* transactions.contactUnblock(action.payload)
-		}),
-		takeLeading(commands.contactAliasKeySend, function*(action) {
-			yield* transactions.contactAliasKeySend(action.payload)
-		}),
-
-		takeLeading(commands.multiMemberGroupCreate, function*(action) {
-			yield* transactions.multiMemberGroupCreate(action.payload)
-		}),
-		takeLeading(commands.multiMemberGroupJoin, function*(action) {
-			yield* transactions.multiMemberGroupJoin(action.payload)
-		}),
-		takeLeading(commands.multiMemberGroupLeave, function*(action) {
-			yield* transactions.multiMemberGroupLeave(action.payload)
-		}),
-		takeLeading(commands.multiMemberGroupAliasResolverDisclose, function*(action) {
-			yield* transactions.multiMemberGroupAliasResolverDisclose(action.payload)
-		}),
-		takeLeading(commands.multiMemberGroupAdminRoleGrant, function*(action) {
-			yield* transactions.multiMemberGroupAdminRoleGrant(action.payload)
-		}),
-
-		takeLeading(commands.multiMemberGroupInvitationCreate, function*(action) {
-			yield* transactions.multiMemberGroupInvitationCreate(action.payload)
-		}),
-		takeLeading(commands.appMetadataSend, function*(action) {
-			yield* transactions.appMetadataSend(action.payload)
-		}),
-		takeLeading(commands.appMessageSend, function*(action) {
-			yield* transactions.appMessageSend(action.payload)
-		}),
-		takeEvery(commands.groupMetadataSubscribe, function*(action) {
-			yield* transactions.groupMetadataSubscribe(action.payload)
-		}),
-		takeLeading(commands.groupMessageSubscribe, function*(action) {
-			yield* transactions.groupMessageSubscribe(action.payload)
-		}),
-	])
+	yield all([...makeDefaultCommandsSagas(commands, transactions)])
 }

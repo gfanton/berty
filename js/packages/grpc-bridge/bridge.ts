@@ -59,6 +59,7 @@ export const bridge: Bridge = (options, metadata): pb.RPCImpl => (
 	}
 
 	// initialize client
+	console.log(_method)
 	const client = grpc.client(_method, options)
 	client.start(new grpc.Metadata(metadata))
 	client.onHeaders((headers: grpc.Metadata) => {

@@ -1,10 +1,11 @@
 import { createSlice, CaseReducer, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { fork, put, all, takeLeading, select, takeEvery, take, delay } from 'redux-saga/effects'
+import { fork, put, all, select, takeEvery, take } from 'redux-saga/effects'
 import faker from 'faker'
 import { Buffer } from 'buffer'
 import { simpleflake } from 'simpleflakes/lib/simpleflakes-legacy'
 import { berty } from '@berty-tech/api'
+import { makeDefaultReducers, makeDefaultCommandsSagas, strToBuf, jsonToBuf } from '../utils'
 
 import { contact, conversation } from '../chat'
 import * as protocol from '../protocol'
@@ -110,15 +111,17 @@ const initialState = {
 const commandHandler = createSlice<State, CommandsReducer>({
 	name: 'chat/account/command',
 	initialState,
-	reducers: {
-		generate: (state) => state,
-		create: (state) => state,
-		delete: (state) => state,
-		sendContactRequest: (state) => state,
-		replay: (state) => state,
-		open: (state) => state,
-		onboard: (state) => state,
-	},
+	// this is stupid but getting https://github.com/kimamula/ts-transformer-keys in might be a headache
+	// maybe move commands and events definitions in .protos
+	reducers: makeDefaultReducers([
+		'generate',
+		'create',
+		'delete',
+		'sendContactRequest',
+		'replay',
+		'open',
+		'onboard',
+	]),
 })
 
 const eventHandler = createSlice<State, EventsReducer>({
@@ -126,14 +129,16 @@ const eventHandler = createSlice<State, EventsReducer>({
 	initialState,
 	reducers: {
 		created: (state, { payload }) => {
-			state.aggregates[payload.aggregateId] = {
-				id: payload.aggregateId,
-				name: payload.name,
-				requests: [],
-				conversations: [],
-				contacts: [],
-				onboarded: false,
-				bridgePort: payload.bridgePort
+			if (!state.aggregates[payload.aggregateId]) {
+				state.aggregates[payload.aggregateId] = {
+					id: payload.aggregateId,
+					name: payload.name,
+					requests: [],
+					conversations: [],
+					contacts: [],
+					onboarded: false,
+					bridgePort: payload.bridgePort,
+				}
 			}
 			return state
 		},
@@ -178,30 +183,17 @@ export const transactions: Transactions = {
 		yield* protocol.transactions.client.start({ id, bridgePort })
 		yield* conversation.transactions.open({ accountId: id })
 
-		// subcribe to account log
 		const client = yield* getProtocolClient(id)
-		console.log('subscribing to', client.accountGroupPk)
-		yield fork(function*() {
-			const chan = yield* protocol.transactions.client.groupMetadataSubscribe({
-				id: client.id,
-				groupPk: Buffer.from(client.accountGroupPk, 'base64'),
-				// TODO: use last cursor
-				since: new Uint8Array(),
-				until: new Uint8Array(),
-				goBackwards: false,
-			})
-			while (1) {
-				const action = yield take(chan)
-				yield put(action)
-				if (action.type === protocol.events.client.groupMetadataPayloadSent.type) {
-					yield put(action.payload.event)
-				}
-			}
+
+		yield* protocol.transactions.client.listenToGroupMetadata({
+			clientId: id,
+			groupPk: strToBuf(client.accountGroupPk),
 		})
+
 		yield* protocol.transactions.client.contactRequestReference({ id })
 	},
 	generate: function*() {
-		yield* transactions.create({ name: faker.name.firstName() })
+		yield* transactions.create({ name: faker.name.firstName(), bridgePort: 1337 })
 	},
 	create: function*({ name, bridgePort }) {
 		// create an id for the account
@@ -210,7 +202,7 @@ export const transactions: Transactions = {
 		const event = events.created({
 			aggregateId: id,
 			name,
-			bridgePort
+			bridgePort,
 		})
 		// open account
 		yield* transactions.open({ id, bridgePort })
@@ -225,8 +217,8 @@ export const transactions: Transactions = {
 
 		yield* protocol.transactions.client.appMetadataSend({
 			id,
-			groupPk: Buffer.from(client.accountGroupPk, 'base64'),
-			payload: new Buffer(JSON.stringify(event)),
+			groupPk: strToBuf(client.accountGroupPk),
+			payload: jsonToBuf(event),
 		})*/
 	},
 	delete: function*() {
@@ -280,9 +272,9 @@ export const transactions: Transactions = {
 		}
 
 		const contact: berty.types.IShareableContact = {
-			pk: Buffer.from(payload.contactPublicKey, 'base64'),
-			publicRendezvousSeed: Buffer.from(payload.contactRdvSeed, 'base64'),
-			metadata: Buffer.from(JSON.stringify(metadata), 'utf-8'),
+			pk: strToBuf(payload.contactPublicKey),
+			publicRendezvousSeed: strToBuf(payload.contactRdvSeed),
+			metadata: jsonToBuf(metadata),
 		}
 
 		yield* protocol.transactions.client.contactRequestSend({
@@ -297,6 +289,7 @@ export const transactions: Transactions = {
 
 export function* orchestrator() {
 	yield all([
+		...makeDefaultCommandsSagas(commands, transactions),
 		fork(function*() {
 			yield take('persist/REHYDRATE')
 			// start protocol clients
@@ -305,30 +298,6 @@ export function* orchestrator() {
 				yield* transactions.open({ id: account.id, bridgePort: account.bridgePort })
 				yield* contact.transactions.open({ accountId: account.id })
 			}
-		}),
-
-		takeLeading(commands.open, function*(action) {
-			yield* transactions.open(action.payload)
-		}),
-
-		takeLeading(commands.generate, function*(action) {
-			yield* transactions.generate(action.payload)
-		}),
-		// TODO: fix create account with takeLeading
-		takeEvery(commands.create, function*(action) {
-			yield* transactions.create(action.payload)
-		}),
-		takeLeading(commands.delete, function*(action) {
-			yield* transactions.delete(action.payload)
-		}),
-		takeLeading(commands.replay, function*(action) {
-			yield* transactions.replay(action.payload)
-		}),
-		takeLeading(commands.sendContactRequest, function*(action) {
-			yield* transactions.sendContactRequest(action.payload)
-		}),
-		takeLeading(commands.onboard, function*(action) {
-			yield* transactions.onboard(action.payload)
 		}),
 	])
 }
