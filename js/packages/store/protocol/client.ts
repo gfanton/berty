@@ -1,14 +1,16 @@
-import { ProtocolServiceClient, bridge } from '@berty-tech/grpc-bridge'
+import { ProtocolServiceClient, WebsocketTransport, bridge } from '@berty-tech/grpc-bridge'
+import { GoBridge } from '@berty-tech/grpc-bridge/orbitdb/native'
 import { grpc } from '@improbable-eng/grpc-web'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { all, put, putResolve, cps, takeEvery } from 'redux-saga/effects'
+import { all, put, putResolve, cps, takeEvery, call } from 'redux-saga/effects'
 import { channel, Channel } from 'redux-saga'
 import * as gen from './client.gen'
 import * as api from '@berty-tech/api'
 import Case from 'case'
 import * as evgen from '../types/events.gen'
 import { makeDefaultReducers, makeDefaultCommandsSagas, bufToStr, bufToJSON } from '../utils'
+import useExternalBridge from './useExternalBridge'
 
 export type Entity = {
 	id: string
@@ -293,12 +295,34 @@ export const transactions: Transactions = {
 
 		//const client = (yield select((state) => queries.get(state, { id }))) as Entity | undefined
 		//const bridge = (yield call(mockBridge, protocolServiceHandlerFactory, !!client)) as RPCImpl
-		const port = bridgePort || 1337
-		const brdg = bridge({
-			host: `http://127.0.0.1:${port}`,
-			transport: grpc.CrossBrowserHttpTransport({ withCredentials: false }),
-			//transport: WebsocketTransport()
-		})
+		let brdg
+		if (useExternalBridge) {
+			const port = bridgePort || 1337
+			brdg = bridge({
+				host: `http://127.0.0.1:${port}`,
+				transport: grpc.CrossBrowserHttpTransport({ withCredentials: false }),
+			})
+		} else {
+			try {
+				yield call(GoBridge.startProtocol, {
+					swarmListeners: ['/ip4/0.0.0.0/tcp/0', '/ip6/0.0.0.0/tcp/0'],
+					grpcListeners: ['/ip4/127.0.0.1/tcp/0/grpcws'],
+					logLevel: 'debug',
+					persistance: false,
+				})
+			} catch (e) {
+				if (e.domain !== 'already started') {
+					throw new Error(e.domain)
+				}
+			}
+			const addr = (yield call(GoBridge.getProtocolAddr)) as string
+			console.warn(`http://${addr}`)
+			brdg = bridge({
+				host: `http://${addr}`,
+				transport: WebsocketTransport(),
+			})
+		}
+
 		services[id] = new ProtocolServiceClient(brdg)
 
 		const { accountPk, devicePk, accountGroupPk } = (yield cps(

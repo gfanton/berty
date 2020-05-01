@@ -284,17 +284,19 @@ const CreateYourAccount: React.FC<{
 						]}
 						onChangeText={setName}
 					/>
-					<TextInput
-						placeholder={'Bridge port'}
-						style={[
-							margin.top.medium,
-							background.light.grey,
-							padding.medium,
-							text.size.large,
-							border.radius.small,
-						]}
-						onChangeText={setBridgePort}
-					/>
+					{__DEV__ && (
+						<TextInput
+							placeholder={'Bridge port'}
+							style={[
+								margin.top.medium,
+								background.light.grey,
+								padding.medium,
+								text.size.large,
+								border.radius.small,
+							]}
+							onChangeText={(text) => setBridgePort(parseInt(text, 10))}
+						/>
+					)}
 				</SwiperCard>
 			)}
 		</Translation>
