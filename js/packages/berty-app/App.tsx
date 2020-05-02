@@ -38,7 +38,6 @@ export const App: React.FC = () => (
 				}
 			>
 				<Chat.Provider config={{ storage: AsyncStorage }}>
-					<Chat.Recorder />
 					<IconRegistry icons={[EvaIconsPack, FeatherIconsPack, CustomIconsPack]} />
 					<Theme.Provider>
 						<Navigation />

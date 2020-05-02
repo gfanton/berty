@@ -1,6 +1,5 @@
 import { ProtocolServiceClient, WebsocketTransport, bridge } from '@berty-tech/grpc-bridge'
 import { GoBridge } from '@berty-tech/grpc-bridge/orbitdb/native'
-import { grpc } from '@improbable-eng/grpc-web'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
 import { all, put, putResolve, cps, takeEvery, call } from 'redux-saga/effects'
@@ -11,6 +10,7 @@ import Case from 'case'
 import * as evgen from '../types/events.gen'
 import { makeDefaultReducers, makeDefaultCommandsSagas, bufToStr, bufToJSON } from '../utils'
 import useExternalBridge from './useExternalBridge'
+import ExternalTransport from './externalTransport'
 
 export type Entity = {
 	id: string
@@ -300,7 +300,7 @@ export const transactions: Transactions = {
 			const port = bridgePort || 1337
 			brdg = bridge({
 				host: `http://127.0.0.1:${port}`,
-				transport: grpc.CrossBrowserHttpTransport({ withCredentials: false }),
+				transport: ExternalTransport(),
 			})
 		} else {
 			try {
