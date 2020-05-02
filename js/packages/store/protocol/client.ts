@@ -2,7 +2,7 @@ import { ProtocolServiceClient, WebsocketTransport, bridge } from '@berty-tech/g
 import { GoBridge } from '@berty-tech/grpc-bridge/orbitdb/native'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { all, put, putResolve, cps, takeEvery, call } from 'redux-saga/effects'
+import { all, put, putResolve, cps, takeEvery, call, delay } from 'redux-saga/effects'
 import { channel, Channel } from 'redux-saga'
 import * as gen from './client.gen'
 import * as api from '@berty-tech/api'
@@ -304,18 +304,20 @@ export const transactions: Transactions = {
 			})
 		} else {
 			try {
+				yield call(GoBridge.stopProtocol)
+				console.log('done stop')
 				yield call(GoBridge.startProtocol, {
 					swarmListeners: ['/ip4/0.0.0.0/tcp/0', '/ip6/0.0.0.0/tcp/0'],
 					grpcListeners: ['/ip4/127.0.0.1/tcp/0/grpcws'],
 					logLevel: 'debug',
 					persistance: false,
 				})
+				console.log('done start')
 			} catch (e) {
-				if (e.domain !== 'already started') {
-					throw new Error(e.domain)
-				}
+				throw new Error(e.domain)
 			}
 			const addr = (yield call(GoBridge.getProtocolAddr)) as string
+			console.log('done getting addr')
 			console.warn(`http://${addr}`)
 			brdg = bridge({
 				host: `http://${addr}`,
@@ -325,10 +327,22 @@ export const transactions: Transactions = {
 
 		services[id] = new ProtocolServiceClient(brdg)
 
-		const { accountPk, devicePk, accountGroupPk } = (yield cps(
-			services[id]?.instanceGetConfiguration,
-			{},
-		)) as api.berty.types.InstanceGetConfiguration.IReply
+		// try to connect repeatedly since startBridge can return before the bridge is ready to serve
+		let reply: api.berty.types.InstanceGetConfiguration.IReply
+		while (true) {
+			try {
+				reply = (yield cps(
+					services[id]?.instanceGetConfiguration,
+					{},
+				)) as api.berty.types.InstanceGetConfiguration.IReply
+				break
+			} catch (e) {
+				console.warn(e)
+			}
+			yield delay(1000)
+		}
+
+		const { accountPk, devicePk, accountGroupPk } = reply
 		if (!(accountPk && devicePk && accountGroupPk)) {
 			throw new Error('Invalid instance data')
 		}

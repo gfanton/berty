@@ -25,6 +25,10 @@ class NoopGoBirdge {
 		return Promise.reject()
 	}
 
+	stopProtocol(): Promise<void> {
+		return Promise.reject()
+	}
+
 	getProtocolAddr(): Promise<string> {
 		return Promise.reject()
 	}
