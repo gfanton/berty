@@ -2,7 +2,6 @@ import { createSlice, CaseReducer, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
 import { fork, put, all, select, takeEvery, take } from 'redux-saga/effects'
 import faker from 'faker'
-import { Buffer } from 'buffer'
 import { simpleflake } from 'simpleflakes/lib/simpleflakes-legacy'
 import { berty } from '@berty-tech/api'
 import { makeDefaultReducers, makeDefaultCommandsSagas, strToBuf, jsonToBuf } from '../utils'
@@ -236,7 +235,7 @@ export const transactions: Transactions = {
 		// replay log from first event
 		const chan = yield* protocol.transactions.client.groupMetadataSubscribe({
 			id: client.id,
-			groupPk: new Buffer(client.accountGroupPk),
+			groupPk: strToBuf(client.accountGroupPk),
 			// TODO: use last cursor
 			since: new Uint8Array(),
 			until: new Uint8Array(),
@@ -266,7 +265,7 @@ export const transactions: Transactions = {
 			throw new Error("account doesn't exist")
 		}
 
-		const metadata = {
+		const metadata: contact.ContactRequestMetadata = {
 			name: account.name,
 			givenName: payload.contactName,
 		}

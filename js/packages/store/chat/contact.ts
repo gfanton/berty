@@ -80,7 +80,8 @@ export namespace Query {
 }
 
 export type ContactRequestMetadata = {
-	name: string
+	name: string // requester name
+	givenName: string // requested name
 }
 
 export namespace Event {
@@ -180,7 +181,7 @@ const eventHandler = createSlice<State, EventsReducer>({
 				state.aggregates[id] = {
 					id,
 					accountId,
-					name: metadata.name,
+					name: metadata.givenName,
 					publicKey: contactPk,
 					groupPk,
 					request: {
@@ -356,7 +357,7 @@ export function* orchestrator() {
 			const contactPkStr = bufToStr(contactPk)
 			const groupPkStr = bufToStr(groupPk)
 			const mtdt = action.payload.event.contact.metadata
-			const metadata = mtdt && bufToJSON(mtdt)
+			const metadata: ContactRequestMetadata = mtdt && bufToJSON(mtdt)
 			yield put(
 				events.outgoingContactRequestEnqueued({
 					accountId: action.payload.aggregateId,
@@ -381,7 +382,7 @@ export function* orchestrator() {
 			const id = getAggregateId({ accountId, contactPk })
 			const contact = yield* getContact(id)
 			if (!contact) {
-				const metadata = JSON.parse(new Buffer(contactMetadata).toString('utf-8'))
+				const metadata: ContactRequestMetadata = bufToJSON(contactMetadata)
 				yield put(
 					events.created({
 						id,

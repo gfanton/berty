@@ -322,6 +322,7 @@ export const transactions: Transactions = {
 			brdg = bridge({
 				host: `http://${addr}`,
 				transport: WebsocketTransport(),
+				debug: __DEV__,
 			})
 		}
 

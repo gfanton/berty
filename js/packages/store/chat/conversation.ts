@@ -4,7 +4,7 @@ import { put, all, select, takeEvery } from 'redux-saga/effects'
 import { berty } from '@berty-tech/api'
 import { Buffer } from 'buffer'
 import { AppMessage, GroupInvitation, SetGroupName, AppMessageType } from './AppMessage'
-import { makeDefaultCommandsSagas, strToBuf, bufToStr, jsonToBuf } from '../utils'
+import { makeDefaultCommandsSagas, strToBuf, bufToStr, jsonToBuf, bufToJSON } from '../utils'
 
 import * as protocol from '../protocol'
 import { contact } from '../chat'
@@ -476,7 +476,7 @@ export function* orchestrator() {
 				groupPk,
 			})
 			const groupPkStr = bufToStr(groupPk)
-			const metadata = JSON.parse(new Buffer(c.metadata).toString('utf-8'))
+			const metadata: contact.ContactRequestMetadata = bufToJSON(c.metadata)
 			yield put(
 				events.created({
 					accountId,

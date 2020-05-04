@@ -1,9 +1,8 @@
 import { composeReducers } from 'redux-compose'
 import { CaseReducer, PayloadAction, createSlice } from '@reduxjs/toolkit'
 import { all, put, takeEvery, select } from 'redux-saga/effects'
-import { Buffer } from 'buffer'
 import { berty } from '@berty-tech/api'
-import { makeDefaultCommandsSagas, strToBuf, bufToStr, jsonToBuf } from '../utils'
+import { makeDefaultCommandsSagas, strToBuf, bufToStr, jsonToBuf, bufToJSON } from '../utils'
 
 import * as protocol from '../protocol'
 import { conversation } from '../chat'
@@ -51,7 +50,7 @@ export namespace Query {
 
 export namespace Event {
 	export type Deleted = { aggregateId: string }
-	export type Sent = {
+	export type Received = {
 		aggregateId: string
 		message: AppMessage
 		receivedDate: number
@@ -101,7 +100,7 @@ export type QueryReducer = {
 
 export type EventsReducer = {
 	deleted: SimpleCaseReducer<Event.Deleted>
-	sent: SimpleCaseReducer<Event.Sent>
+	received: SimpleCaseReducer<Event.Received>
 	hidden: SimpleCaseReducer<Event.Hidden>
 }
 
@@ -130,7 +129,7 @@ const eventHandler = createSlice<State, EventsReducer>({
 	name: 'chat/message/event',
 	initialState,
 	reducers: {
-		sent: (state, { payload: { aggregateId, message, receivedDate, isMe } }) => {
+		received: (state, { payload: { aggregateId, message, receivedDate, isMe } }) => {
 			if (state.aggregates[aggregateId]) {
 				return state
 			}
@@ -266,7 +265,7 @@ export function* orchestrator() {
 			if (!groupPkBuf) {
 				return
 			}
-			const message: AppMessage = JSON.parse(new Buffer(action.payload.message).toString('utf-8'))
+			const message: AppMessage = bufToJSON(action.payload.message)
 			const aggregateId = bufToStr(idBuf)
 			// create the message entity
 			const existingMessage = (yield select((state) => queries.get(state, { id: aggregateId }))) as
@@ -290,11 +289,13 @@ export function* orchestrator() {
 
 			const client = yield* getProtocolClient(action.payload.aggregateId)
 			const devicePk = action.payload.headers?.devicePk
-			const isMe = !!devicePk && new Buffer(devicePk).toString('utf-8') === client.devicePk
+
+			// warning, this does not support using multiple devices and might not work for multimember groups
+			const isMe = !!devicePk && bufToStr(devicePk) === client.devicePk
 
 			// Add received message in store
 			yield put(
-				events.sent({
+				events.received({
 					aggregateId,
 					message,
 					receivedDate: Date.now(),
@@ -313,16 +314,18 @@ export function* orchestrator() {
 					isMe,
 				})
 
-				// send acknowledgment
-				const acknowledge: Acknowledge = {
-					type: AppMessageType.Acknowledge,
-					target: aggregateId,
+				if (!isMe) {
+					// send acknowledgment
+					const acknowledge: Acknowledge = {
+						type: AppMessageType.Acknowledge,
+						target: aggregateId,
+					}
+					yield* protocol.transactions.client.appMessageSend({
+						id: conv.accountId,
+						groupPk: groupPkBuf,
+						payload: jsonToBuf(acknowledge),
+					})
 				}
-				yield* protocol.transactions.client.appMessageSend({
-					id: conv.accountId,
-					groupPk: groupPkBuf,
-					payload: jsonToBuf(acknowledge),
-				})
 			}
 		}),
 	])
