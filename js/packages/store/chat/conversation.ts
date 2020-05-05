@@ -1,6 +1,6 @@
 import { createSlice, CaseReducer, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { put, all, select, takeEvery } from 'redux-saga/effects'
+import { put, all, select, takeEvery, delay } from 'redux-saga/effects'
 import { berty } from '@berty-tech/api'
 import { Buffer } from 'buffer'
 import { AppMessage, GroupInvitation, SetGroupName, AppMessageType } from './AppMessage'
@@ -459,10 +459,19 @@ export function* orchestrator() {
 			if (!contactPk) {
 				return
 			}
-			const groupInfo = (yield* protocol.transactions.client.groupInfo({
-				id: payload.aggregateId,
-				contactPk,
-			} as any)) as berty.types.GroupInfo.IReply
+			let groupInfo
+			while (true) {
+				try {
+					groupInfo = (yield* protocol.transactions.client.groupInfo({
+						id: payload.aggregateId,
+						contactPk,
+					} as any)) as berty.types.GroupInfo.IReply
+					break
+				} catch (e) {
+					console.warn(e)
+					delay(1000)
+				}
+			}
 			const { group } = groupInfo
 			if (!group) {
 				return
