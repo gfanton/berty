@@ -309,7 +309,7 @@ export const transactions: Transactions = {
 				yield call(GoBridge.startProtocol, {
 					swarmListeners: ['/ip4/0.0.0.0/tcp/0', '/ip6/0.0.0.0/tcp/0'],
 					grpcListeners: ['/ip4/127.0.0.1/tcp/0/grpcws'],
-					logLevel: 'debug',
+					logLevel: 'info',
 					persistance: false,
 				})
 				console.log('done start')
