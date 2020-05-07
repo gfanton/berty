@@ -6,6 +6,7 @@ import (
 
 	"berty.tech/berty/v2/go/internal/grpcutil"
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/tinder"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"google.golang.org/grpc"
 )
@@ -37,22 +38,12 @@ func testingInMemoryClient(t *testing.T) (*Service, ipfsutil.CoreAPIMock, cleanF
 	t.Helper()
 
 	ctx := context.Background()
-
 	mn := mocknet.New(ctx)
-	rdvp, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	demo, ipfsmock, cleanup := testingInMemoryClientWithOpts(t, &ipfsutil.TestingAPIOpts{
-		Mocknet: mn,
-		RDVPeer: rdvp.Peerstore().PeerInfo(rdvp.ID()),
+	return testingInMemoryClientWithOpts(t, &ipfsutil.TestingAPIOpts{
+		Mocknet:     mn,
+		MockRouting: tinder.NewMockedDriverServer(),
 	})
-
-	return demo, ipfsmock, func() {
-		cleanup()
-		_ = rdvp.Close()
-	}
 }
 
 func testingClientService(t *testing.T, srv DemoServiceServer) (DemoServiceClient, cleanFunc) {

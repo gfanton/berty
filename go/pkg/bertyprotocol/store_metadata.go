@@ -69,37 +69,67 @@ func (m *metadataStore) setLogger(l *zap.Logger) {
 }
 
 func (m *metadataStore) ListEvents(ctx context.Context) <-chan *bertytypes.GroupMetadataEvent {
-	ch := make(chan *bertytypes.GroupMetadataEvent)
+	log := m.OpLog()
+	slice := log.GetEntries().Slice()
 
-	go func() {
-		log := m.OpLog()
-
-		for _, e := range log.GetEntries().Slice() {
-			op, err := operation.ParseOperation(e)
-			if err != nil {
-				continue
-			}
-
-			meta, event, err := openGroupEnvelope(m.g, op.GetValue())
-			if err != nil {
-				m.logger.Error("unable to open group envelope", zap.Error(err))
-				continue
-			}
-
-			metaEvent, err := newGroupMetadataEventFromEntry(log, e, meta, event, m.g)
-			if err != nil {
-				m.logger.Error("unable to get group metadata event from entry", zap.Error(err))
-				continue
-			}
-
-			ch <- metaEvent
+	ch := make(chan *bertytypes.GroupMetadataEvent, len(slice))
+	for _, e := range slice {
+		op, err := operation.ParseOperation(e)
+		if err != nil {
+			continue
 		}
 
-		close(ch)
-	}()
+		meta, event, err := openGroupEnvelope(m.g, op.GetValue())
+		if err != nil {
+			m.logger.Error("unable to open group envelope", zap.Error(err))
+			continue
+		}
+
+		metaEvent, err := newGroupMetadataEventFromEntry(log, e, meta, event, m.g)
+		if err != nil {
+			m.logger.Error("unable to get group metadata event from entry", zap.Error(err))
+			continue
+		}
+
+		ch <- metaEvent
+	}
+	close(ch)
 
 	return ch
 }
+
+// func (m *metadataStore) ListEvents(ctx context.Context) <-chan *bertytypes.GroupMetadataEvent {
+// 	ch := make(chan *bertytypes.GroupMetadataEvent)
+
+// 	go func() {
+// 		log := m.OpLog()
+
+// 		for _, e := range log.GetEntries().Slice() {
+// 			op, err := operation.ParseOperation(e)
+// 			if err != nil {
+// 				continue
+// 			}
+
+// 			meta, event, err := openGroupEnvelope(m.g, op.GetValue())
+// 			if err != nil {
+// 				m.logger.Error("unable to open group envelope", zap.Error(err))
+// 				continue
+// 			}
+
+// 			metaEvent, err := newGroupMetadataEventFromEntry(log, e, meta, event, m.g)
+// 			if err != nil {
+// 				m.logger.Error("unable to get group metadata event from entry", zap.Error(err))
+// 				continue
+// 			}
+
+// 			ch <- metaEvent
+// 		}
+
+// 		close(ch)
+// 	}()
+
+// 	return ch
+// }
 
 func (m *metadataStore) AddDeviceToGroup(ctx context.Context) (operation.Operation, error) {
 	md, err := m.devKS.MemberDeviceForGroup(m.g)

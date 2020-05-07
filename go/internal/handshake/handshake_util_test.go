@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/tinder"
 	"berty.tech/berty/v2/go/pkg/errcode"
 
 	ggio "github.com/gogo/protobuf/io"
@@ -67,20 +68,16 @@ func newMockedHandshake(t *testing.T, ctx context.Context) *mockedHandshake {
 	t.Helper()
 
 	mn := p2pmocknet.New(ctx)
-	rdvp, err := mn.GenPeer()
-	require.NoError(t, err, "failed to generate mocked peer")
-
-	_, rdv_cleanup := ipfsutil.TestingRDVP(ctx, t, rdvp)
-
 	opts := &ipfsutil.TestingAPIOpts{
-		Mocknet: mn,
-		RDVPeer: rdvp.Peerstore().PeerInfo(rdvp.ID()),
+		Mocknet:     mn,
+		MockRouting: tinder.NewMockedDriverServer(),
 	}
+
 	requester, req_cleanup := newMockedPeer(t, ctx, opts)
 	responder, res_cleanup := newMockedPeer(t, ctx, opts)
 
 	// link responder & requester
-	err = opts.Mocknet.LinkAll()
+	err := opts.Mocknet.LinkAll()
 	require.NoError(t, err, "can't link peers")
 
 	// connect responder & requester
@@ -90,7 +87,6 @@ func newMockedHandshake(t *testing.T, ctx context.Context) *mockedHandshake {
 	cleanup := func() {
 		res_cleanup()
 		req_cleanup()
-		rdv_cleanup()
 	}
 
 	return &mockedHandshake{

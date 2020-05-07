@@ -10,6 +10,7 @@ import (
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
 	"berty.tech/berty/v2/go/internal/testutil"
+	"berty.tech/berty/v2/go/internal/tinder"
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	orbitdb "berty.tech/go-orbit-db"
 	"github.com/ipfs/go-datastore"
@@ -58,8 +59,8 @@ func TestDifferentStores(t *testing.T) {
 	_, _ = ipfsutil.TestingRDVP(ctx, t, rdvp)
 
 	ipfsOpts := &ipfsutil.TestingAPIOpts{
-		Mocknet: mn,
-		RDVPeer: rdvp.Peerstore().PeerInfo(rdvp.ID()),
+		Mocknet:     mn,
+		MockRouting: tinder.NewMockedDriverServer(),
 	}
 
 	pathBase, err := ioutil.TempDir("", "odb_manyaddstest")

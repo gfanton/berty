@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tinder "berty.tech/berty/v2/go/internal/tinder"
+	datastore "github.com/ipfs/go-datastore"
 	ds "github.com/ipfs/go-datastore"
 	dsync "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/require"
@@ -16,13 +17,15 @@ import (
 	ipfs_core "github.com/ipfs/go-ipfs/core"
 	ipfs_coreapi "github.com/ipfs/go-ipfs/core/coreapi"
 	ipfs_mock "github.com/ipfs/go-ipfs/core/mock"
+	ipfs_p2p "github.com/ipfs/go-ipfs/core/node/libp2p"
 	ipfs_repo "github.com/ipfs/go-ipfs/repo"
 	ipfs_interface "github.com/ipfs/interface-go-ipfs-core"
 
 	libp2p_ci "github.com/libp2p/go-libp2p-core/crypto"
 	host "github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
 	libp2p_peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/routing"
+	record "github.com/libp2p/go-libp2p-record"
 	rendezvous "github.com/libp2p/go-libp2p-rendezvous"
 	p2p_rpdb "github.com/libp2p/go-libp2p-rendezvous/db/sqlite"
 	libp2p_mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -70,8 +73,8 @@ func TestingRepo(t testing.TB) ipfs_repo.Repo {
 }
 
 type TestingAPIOpts struct {
-	Mocknet libp2p_mocknet.Mocknet
-	RDVPeer peer.AddrInfo
+	Mocknet     libp2p_mocknet.Mocknet
+	MockRouting *tinder.MockDriverServer
 }
 
 // TestingCoreAPIUsingMockNet returns a fully initialized mocked Core API with the given mocknet
@@ -79,7 +82,9 @@ func TestingCoreAPIUsingMockNet(ctx context.Context, t testing.TB, opts *Testing
 	t.Helper()
 
 	r := TestingRepo(t)
-	routingopt, crout := NewTinderRouting(zap.NewNop(), &opts.RDVPeer, false)
+
+	require.NotNil(t, opts.MockRouting, "MockRouting should not be nil")
+	routingopt, crout := NewTestingRouting(zap.NewNop(), opts.MockRouting)
 
 	node, err := ipfs_core.NewNode(ctx, &ipfs_core.BuildCfg{
 		Repo:    r,
@@ -109,7 +114,7 @@ func TestingCoreAPIUsingMockNet(ctx context.Context, t testing.TB, opts *Testing
 		node.Close()
 
 		// manually close dht since ipfs will not be able to do that
-		routing.IpfsDHT.Close()
+		// routing.IpfsDHT.Close()
 	}
 
 	return
@@ -122,24 +127,14 @@ func TestingCoreAPI(ctx context.Context, t testing.TB) (CoreAPIMock, func()) {
 	t.Helper()
 
 	m := libp2p_mocknet.New(ctx)
-	defer func() {
-		_ = m.LinkAll()
-		_ = m.ConnectAllButSelf()
-	}()
 
-	peer, err := m.GenPeer()
-	require.NoError(t, err)
-
-	_, cleanrdvp := TestingRDVP(ctx, t, peer)
 	api, cleanapi := TestingCoreAPIUsingMockNet(ctx, t, &TestingAPIOpts{
-		Mocknet: m,
-		RDVPeer: peer.Network().Peerstore().PeerInfo(peer.ID()),
+		Mocknet:     m,
+		MockRouting: tinder.NewMockedDriverServer(),
 	})
 
-	return api, func() {
-		cleanapi()
-		cleanrdvp()
-	}
+	return api, cleanapi
+
 }
 
 func TestingRDVP(ctx context.Context, t testing.TB, h host.Host) (*rendezvous.RendezvousService, func()) {
@@ -149,6 +144,18 @@ func TestingRDVP(ctx context.Context, t testing.TB, h host.Host) (*rendezvous.Re
 	return rendezvous.NewRendezvousService(h, db), func() {
 		db.Close()
 	}
+}
+
+func NewTestingRouting(logger *zap.Logger, server *tinder.MockDriverServer) (ipfs_p2p.RoutingOption, <-chan *RoutingOut) {
+	crout := make(chan *RoutingOut, 1)
+	return func(ctx context.Context, h host.Host, dstore datastore.Batching, validator record.Validator) (routing.Routing, error) {
+		defer close(crout)
+
+		routing := tinder.NewMockedDriverClient(h, server)
+		crout <- &RoutingOut{nil, routing}
+
+		return routing, nil
+	}, crout
 }
 
 type coreAPIMock struct {

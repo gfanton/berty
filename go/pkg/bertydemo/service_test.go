@@ -8,6 +8,7 @@ import (
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
 	"berty.tech/berty/v2/go/internal/testutil"
+	"berty.tech/berty/v2/go/internal/tinder"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -84,14 +85,9 @@ func TestLogFromTokenDiffClients(t *testing.T) {
 	defer cancel()
 
 	mn := mocknet.New(ctx)
-	rdvp, err := mn.GenPeer()
-	require.NoError(t, err, "failed to generate mocked peer")
-
-	_, _ = ipfsutil.TestingRDVP(ctx, t, rdvp)
-
 	ipfsOpts := &ipfsutil.TestingAPIOpts{
-		Mocknet: mn,
-		RDVPeer: rdvp.Peerstore().PeerInfo(rdvp.ID()),
+		Mocknet:     mn,
+		MockRouting: tinder.NewMockedDriverServer(),
 	}
 
 	client1, _, clean := testingInMemoryClientWithOpts(t, ipfsOpts)
@@ -106,7 +102,7 @@ func TestLogFromTokenDiffClients(t *testing.T) {
 	demo2, clean := testingClientService(t, client2)
 	defer clean()
 
-	err = mn.LinkAll()
+	err := mn.LinkAll()
 	require.NoError(t, err)
 
 	err = mn.ConnectAllButSelf()

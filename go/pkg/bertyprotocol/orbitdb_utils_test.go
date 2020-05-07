@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/tinder"
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	"github.com/ipfs/go-ipfs/keystore"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -81,8 +82,8 @@ func createPeersWithGroup(ctx context.Context, t testing.TB, pathBase string, me
 	_, _ = ipfsutil.TestingRDVP(ctx, t, rdvp)
 
 	ipfsopts := ipfsutil.TestingAPIOpts{
-		Mocknet: mn,
-		RDVPeer: rdvp.Peerstore().PeerInfo(rdvp.ID()),
+		Mocknet:     mn,
+		MockRouting: tinder.NewMockedDriverServer(),
 	}
 	deviceIndex := 0
 

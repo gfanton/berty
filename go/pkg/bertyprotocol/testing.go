@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/tinder"
 	grpc "google.golang.org/grpc"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -13,11 +14,9 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 
 	keystore "github.com/ipfs/go-ipfs-keystore"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	peer "github.com/libp2p/go-libp2p-core/peer"
 	libp2p_mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
 
@@ -30,9 +29,9 @@ type TestingProtocol struct {
 }
 
 type TestingOpts struct {
-	Logger  *zap.Logger
-	Mocknet libp2p_mocknet.Mocknet
-	RDVPeer peer.AddrInfo
+	Logger      *zap.Logger
+	Mocknet     libp2p_mocknet.Mocknet
+	MockRouting *tinder.MockDriverServer
 }
 
 func NewTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpts) (*TestingProtocol, func()) {
@@ -43,8 +42,8 @@ func NewTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpts) (*
 	}
 
 	ipfsopts := &ipfsutil.TestingAPIOpts{
-		Mocknet: opts.Mocknet,
-		RDVPeer: opts.RDVPeer,
+		Mocknet:     opts.Mocknet,
+		MockRouting: opts.MockRouting,
 	}
 
 	node, cleanupNode := ipfsutil.TestingCoreAPIUsingMockNet(ctx, t, ipfsopts)
@@ -99,12 +98,9 @@ func generateTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpt
 	}
 	logger := opts.Logger
 
-	rdvpeer, err := opts.Mocknet.GenPeer()
-	_, cleanupRDVP := ipfsutil.TestingRDVP(ctx, t, rdvpeer)
-	rdvpnet := opts.Mocknet.Net(rdvpeer.ID())
-	require.NotNil(t, rdvpnet)
-
-	opts.RDVPeer = rdvpeer.Peerstore().PeerInfo(rdvpeer.ID())
+	if opts.MockRouting == nil {
+		opts.MockRouting = tinder.NewMockedDriverServer()
+	}
 
 	cls := make([]func(), n)
 	tps := make([]*TestingProtocol, n)
@@ -114,22 +110,20 @@ func generateTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpt
 		tps[i], cls[i] = NewTestingProtocol(ctx, t, opts)
 	}
 
-	err = opts.Mocknet.LinkAll()
+	err := opts.Mocknet.LinkAll()
 	require.NoError(t, err)
 
-	for _, net := range opts.Mocknet.Nets() {
-		if net != rdvpnet {
-			_, err = opts.Mocknet.ConnectNets(net, rdvpnet)
-			assert.NoError(t, err)
-		}
-	}
+	// for _, net := range opts.Mocknet.Nets() {
+	// 	if net != rdvpnet {
+	// 		_, err = opts.Mocknet.ConnectNets(net, rdvpnet)
+	// 		assert.NoError(t, err)
+	// 	}
+	// }
 
 	return tps, func() {
 		for i := range cls {
 			cls[i]()
 		}
-
-		cleanupRDVP()
 	}
 
 }
