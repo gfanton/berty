@@ -1,8 +1,8 @@
 import { ProtocolServiceClient, WebsocketTransport, bridge } from '@berty-tech/grpc-bridge'
-import { GoBridge } from '@berty-tech/grpc-bridge/orbitdb/native'
+import { GoBridge, GoBridgeOpts } from '@berty-tech/grpc-bridge/orbitdb/native'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { all, put, putResolve, cps, takeEvery, call, delay } from 'redux-saga/effects'
+import { all, put, putResolve, cps, takeEvery, call, delay, select } from 'redux-saga/effects'
 import { channel, Channel } from 'redux-saga'
 import * as gen from './client.gen'
 import * as api from '@berty-tech/api'
@@ -11,6 +11,7 @@ import * as evgen from '../types/events.gen'
 import { makeDefaultReducers, makeDefaultCommandsSagas, bufToStr, bufToJSON } from '../utils'
 import useExternalBridge from './useExternalBridge'
 import ExternalTransport from './externalTransport'
+import { getMainSettings } from '../settings/main'
 
 export type Entity = {
 	id: string
@@ -34,7 +35,6 @@ export type GlobalState = {
 }
 
 export type Commands = gen.Commands<State> & {
-	start: (state: State, action: { payload: { id: string; bridgePort: number } }) => State
 	delete: (state: State, action: { payload: { id: string } }) => State
 }
 
@@ -79,6 +79,9 @@ export type Transactions = {
 	listenToGroupMetadata: (payload: { clientId: string; groupPk: Uint8Array }) => Generator
 	listenToGroupMessages: (payload: { clientId: string; groupPk: Uint8Array }) => Generator
 	listenToGroup: (payload: { clientId: string; groupPk: Uint8Array }) => Generator
+	start: (payload: { id: string }) => Generator
+	deleteService: (payload: { id: string }) => Generator
+	restart: (payload: { id: string }) => Generator
 }
 
 const initialState: State = {
@@ -147,7 +150,7 @@ const eventNameFromValue = (value: number) => {
 	return api.berty.types.EventType[value]
 }
 
-const services: { [key: string]: ProtocolServiceClient } = {}
+export const services: { [key: string]: ProtocolServiceClient } = {}
 export const getService = (id: string) => {
 	const service = services[id]
 	if (!service) {
@@ -284,37 +287,50 @@ const defaultTransactions = (Object.keys(gen.Methods) as (keyof gen.Commands<Sta
 	{} as Transactions,
 ) as Transactions
 
+export type BertyNodeConfig =
+	| { type: 'external'; host: string; port: number }
+	| { type: 'embedded'; opts: GoBridgeOpts }
+
+export const defaultExternalBridgeConfig: BertyNodeConfig = {
+	type: 'external',
+	host: '127.0.0.1',
+	port: 1337,
+}
+
+export const defaultBridgeOpts = {
+	swarmListeners: ['/ip4/0.0.0.0/tcp/0', '/ip6/0.0.0.0/tcp/0'],
+	grpcListeners: ['/ip4/127.0.0.1/tcp/0/grpcws'],
+	logLevel: 'info',
+	persistance: true,
+}
+
 export const transactions: Transactions = {
 	...defaultTransactions,
-	start: function*({ id, bridgePort }) {
+	start: function*({ id }) {
 		if (services[id] != null) {
+			console.warn('service already exists')
 			return
 		}
 
-		console.log('starting client')
+		const { nodeConfig } = yield* getMainSettings(id)
 
-		//const client = (yield select((state) => queries.get(state, { id }))) as Entity | undefined
-		//const bridge = (yield call(mockBridge, protocolServiceHandlerFactory, !!client)) as RPCImpl
+		console.warn('starting client')
 		let brdg
-		if (useExternalBridge) {
-			const port = bridgePort || 1337
+
+		if (nodeConfig.type === 'external') {
 			brdg = bridge({
-				host: `http://127.0.0.1:${port}`,
+				host: `http://${nodeConfig.host}:${nodeConfig.port}`,
 				transport: ExternalTransport(),
 			})
 		} else {
 			try {
-				yield call(GoBridge.stopProtocol)
-				console.log('done stop')
-				yield call(GoBridge.startProtocol, {
-					swarmListeners: ['/ip4/0.0.0.0/tcp/0', '/ip6/0.0.0.0/tcp/0'],
-					grpcListeners: ['/ip4/127.0.0.1/tcp/0/grpcws'],
-					logLevel: 'info',
-					persistance: false,
-				})
+				console.log('starting node with', nodeConfig.opts)
+				yield call(GoBridge.startProtocol, nodeConfig.opts)
 				console.log('done start')
 			} catch (e) {
-				throw new Error(e.domain)
+				if (e.domain !== 'already started') {
+					throw new Error(e.domain)
+				}
 			}
 			const addr = (yield call(GoBridge.getProtocolAddr)) as string
 			console.log('done getting addr')
@@ -353,12 +369,22 @@ export const transactions: Transactions = {
 				accountPk: bufToStr(accountPk),
 				devicePk: bufToStr(devicePk),
 				accountGroupPk: bufToStr(accountGroupPk),
-				bridgePort,
+				bridgePort: 42,
 			}),
 		)
 	},
+	deleteService: function*({ id }) {
+		const service = getService(id)
+		service.end()
+		delete services[id]
+	},
+	restart: function*(payload) {
+		yield* transactions.delete({ id: payload.id })
+		yield call(GoBridge.stopProtocol)
+		yield* transactions.start(payload)
+	},
 	delete: function*({ id }) {
-		services[id]?.end()
+		yield* transactions.deleteService({ id })
 		yield put(events.deleted({ aggregateId: id }))
 	},
 	contactRequestReference: function*(payload) {

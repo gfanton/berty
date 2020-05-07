@@ -129,6 +129,7 @@ class GoBridge: NSObject {
     @objc func startProtocol(_ opts: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         do {
             if self.bridgeProtocol != nil {
+                NSLog("protocol already started")
                 throw NSError(domain: "already started", code: 1)
             }
 
@@ -168,6 +169,7 @@ class GoBridge: NSObject {
 
             // set persistance if needed
             if optPersistance {
+                NSLog("persistance enabled")
                 var isDirectory: ObjCBool = true
                 let exist = FileManager.default.fileExists(atPath: self.orbitdir.path, isDirectory: &isDirectory)
                 if !exist {

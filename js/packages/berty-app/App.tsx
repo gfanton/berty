@@ -23,10 +23,17 @@ import { IconRegistry } from 'react-native-ui-kitten'
 import { EvaIconsPack } from '@ui-kitten/eva-icons'
 import { CustomIconsPack } from './custom-icons'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { NodeGate } from '@berty-tech/berty-storybook'
+import GoBridge from '@berty-tech/go-bridge'
 
 enableScreens()
 
-DevMenu.addItem('Clear async-storage', () => AsyncStorage.clear())
+DevMenu.addItem('Clear async-storage', async () => {
+	await GoBridge.stopProtocol()
+	await GoBridge.clearStorage()
+	await AsyncStorage.clear()
+	console.warn('CLEAR DONE')
+})
 
 export const App: React.FC = () => (
 	<SafeAreaProvider>
@@ -40,7 +47,9 @@ export const App: React.FC = () => (
 				<Chat.Provider config={{ storage: AsyncStorage }}>
 					<IconRegistry icons={[EvaIconsPack, FeatherIconsPack, CustomIconsPack]} />
 					<Theme.Provider>
-						<Navigation />
+						<NodeGate>
+							<Navigation />
+						</NodeGate>
 					</Theme.Provider>
 				</Chat.Provider>
 			</Store.Provider>

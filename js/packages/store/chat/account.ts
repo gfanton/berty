@@ -1,13 +1,21 @@
 import { createSlice, CaseReducer, PayloadAction } from '@reduxjs/toolkit'
 import { composeReducers } from 'redux-compose'
-import { fork, put, all, select, takeEvery, take } from 'redux-saga/effects'
-import faker from 'faker'
+import { fork, put, all, select, takeEvery, take, delay, call } from 'redux-saga/effects'
+import { GoBridge } from '@berty-tech/grpc-bridge/orbitdb/native'
+//import faker from 'faker'
 import { simpleflake } from 'simpleflakes/lib/simpleflakes-legacy'
 import { berty } from '@berty-tech/api'
-import { makeDefaultReducers, makeDefaultCommandsSagas, strToBuf, jsonToBuf } from '../utils'
+import {
+	makeDefaultReducers,
+	makeDefaultCommandsSagas,
+	strToBuf,
+	bufToStr,
+	jsonToBuf,
+} from '../utils'
 
 import { contact, conversation } from '../chat'
 import * as protocol from '../protocol'
+import { events as mainSettingsEvents } from '../settings/main'
 
 export type Entity = {
 	id: string
@@ -16,7 +24,6 @@ export type Entity = {
 	conversations: Array<string>
 	contacts: Array<string>
 	onboarded: boolean
-	bridgePort: number
 }
 
 export type Event = {
@@ -37,7 +44,7 @@ export type GlobalState = {
 
 export namespace Command {
 	export type Generate = void
-	export type Create = { name: string; bridgePort: number }
+	export type Create = { name: string; nodeConfig: protocol.client.BertyNodeConfig }
 	export type Delete = { id: string }
 	export type SendContactRequest = {
 		id: string
@@ -46,7 +53,7 @@ export namespace Command {
 		contactPublicKey: string
 	}
 	export type Replay = { id: string }
-	export type Open = { id: string; bridgePort: number }
+	export type Open = { id: string }
 	export type Onboard = { id: string }
 }
 
@@ -62,7 +69,6 @@ export namespace Event {
 	export type Created = {
 		aggregateId: string
 		name: string
-		bridgePort: number
 	}
 	export type Deleted = { aggregateId: string }
 	export type Onboarded = { aggregateId: string }
@@ -136,7 +142,6 @@ const eventHandler = createSlice<State, EventsReducer>({
 					conversations: [],
 					contacts: [],
 					onboarded: false,
-					bridgePort: payload.bridgePort,
 				}
 			}
 			return state
@@ -178,33 +183,60 @@ export const getProtocolClient = function*(id: string): Generator<unknown, proto
 }
 
 export const transactions: Transactions = {
-	open: function*({ id, bridgePort }) {
-		yield* protocol.transactions.client.start({ id, bridgePort })
+	open: function*({ id }) {
+		console.warn('opening', id)
+		yield* protocol.transactions.client.start({ id })
+
+		while (true) {
+			try {
+				yield* protocol.transactions.client.instanceGetConfiguration({ id })
+				break
+			} catch (e) {
+				console.warn(e)
+			}
+			yield delay(1000)
+		}
+
+		console.warn('done starting')
 		yield* conversation.transactions.open({ accountId: id })
 
 		const client = yield* getProtocolClient(id)
 
+		console.log('client', client)
+
+		const gpkb = strToBuf(client.accountGroupPk)
+		console.log('gpks', bufToStr(gpkb))
+
+		/*yield* protocol.transactions.client.activateGroup({
+			id,
+			groupPk: gpkb,
+		})*/
 		yield* protocol.transactions.client.listenToGroupMetadata({
 			clientId: id,
-			groupPk: strToBuf(client.accountGroupPk),
+			groupPk: gpkb,
 		})
 
 		yield* protocol.transactions.client.contactRequestReference({ id })
 	},
 	generate: function*() {
-		yield* transactions.create({ name: faker.name.firstName(), bridgePort: 1337 })
+		throw new Error('not implemented')
+		//yield* transactions.create({ name: faker.name.firstName(), config: {} })
 	},
-	create: function*({ name, bridgePort }) {
+	create: function*({ name, nodeConfig }) {
+		console.log('account create')
 		// create an id for the account
 		const id = simpleflake().toString()
+
+		yield put(mainSettingsEvents.created({ id, nodeConfig }))
 
 		const event = events.created({
 			aggregateId: id,
 			name,
-			bridgePort,
 		})
 		// open account
-		yield* transactions.open({ id, bridgePort })
+		console.warn('opening in create')
+		yield* transactions.open({ id })
+		console.warn('done opening in create')
 		// get account PK
 
 		yield* protocol.transactions.client.contactRequestResetReference({ id })
@@ -219,8 +251,11 @@ export const transactions: Transactions = {
 			groupPk: strToBuf(client.accountGroupPk),
 			payload: jsonToBuf(event),
 		})*/
+		console.warn('done create')
 	},
-	delete: function*() {
+	delete: function*({ id }) {
+		yield call(GoBridge.stopProtocol)
+		yield call(GoBridge.clearStorage)
 		yield put({ type: 'CLEAR_STORE' })
 	},
 	replay: function*({ id }) {
@@ -290,11 +325,12 @@ export function* orchestrator() {
 	yield all([
 		...makeDefaultCommandsSagas(commands, transactions),
 		fork(function*() {
+			console.log('waiting on rehydrate')
 			yield take('persist/REHYDRATE')
 			// start protocol clients
 			const accounts = (yield select(queries.getAll)) as Entity[]
 			for (const account of accounts) {
-				yield* transactions.open({ id: account.id, bridgePort: account.bridgePort })
+				yield* transactions.open({ id: account.id })
 				yield* contact.transactions.open({ accountId: account.id })
 			}
 		}),

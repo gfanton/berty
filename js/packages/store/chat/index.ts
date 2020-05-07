@@ -8,6 +8,7 @@ import createSagaMonitor from '@clarketm/saga-monitor'
 import { persistReducer, persistStore } from 'redux-persist'
 
 import * as protocol from '../protocol'
+import * as settings from '../settings'
 import * as account from './account'
 import * as contact from './contact'
 import * as conversation from './conversation'
@@ -20,6 +21,7 @@ export type State = account.GlobalState
 
 export const reducers = {
 	...protocol.reducers,
+	...settings.reducers,
 	chat: combineReducers({
 		account: account.reducer,
 		contact: contact.reducer,
@@ -34,6 +36,7 @@ export function* rootSaga() {
 		try {
 			yield all([
 				call(protocol.rootSaga),
+				call(settings.rootSaga),
 				call(account.orchestrator),
 				call(contact.orchestrator),
 				call(conversation.orchestrator),
@@ -103,8 +106,9 @@ export const init = mem(
 		]
 
 		const persistConfig = {
-			key: 'chat',
+			key: 'root',
 			storage: config.storage,
+			whitelist: ['chat', 'settings'],
 		}
 
 		const configuredStore = configureStore({

@@ -276,9 +276,14 @@ export const transactions: Transactions = {
 		const contacts = (yield select((state) => queries.list(state))) as Entity[]
 		for (const { groupPk } of contacts.filter((contact) => contact.accountId === accountId)) {
 			if (groupPk) {
+				const gpks = strToBuf(groupPk)
+				/*yield* protocol.client.transactions.activateGroup({
+					id: accountId,
+					groupPk: gpks,
+				})*/
 				yield* protocol.client.transactions.listenToGroup({
 					clientId: accountId,
-					groupPk: strToBuf(groupPk),
+					groupPk: gpks,
 				})
 			}
 		}

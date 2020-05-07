@@ -159,6 +159,9 @@ const createNavigation = ({
 			}
 		},
 		navigate: {
+			root: {
+				tabs: createNavigateFunc(navigate, Routes.Root.Tabs),
+			},
 			onboarding: {
 				getStarted: createNavigateFunc(navigate, Routes.Onboarding.GetStarted),
 				selectMode: createNavigateFunc(navigate, Routes.Onboarding.SelectMode),

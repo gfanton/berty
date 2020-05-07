@@ -8,6 +8,7 @@ import {
 	TouchableHighlight,
 	TouchableOpacity,
 	ViewStyle,
+	Switch,
 } from 'react-native'
 import { useLayout } from 'react-native-hooks'
 import { Translation } from 'react-i18next'
@@ -20,6 +21,11 @@ import { useNavigation as useReactNavigation } from '@react-navigation/native'
 import { useDispatch } from 'react-redux'
 import { chat } from '@berty-tech/store'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import {
+	defaultBridgeOpts,
+	BertyNodeConfig,
+	defaultExternalBridgeConfig,
+} from '@berty-tech/store/protocol/client'
 
 type Navigation = () => void
 type Form<T> = (arg0: T) => Promise<void>
@@ -250,11 +256,72 @@ const SwiperCard: React.FC<{
 	)
 }
 
+const defaultEmbeddedConfig: BertyNodeConfig = {
+	type: 'embedded',
+	opts: defaultBridgeOpts,
+}
+
+const NodeConfigInput: React.FC<{
+	config: BertyNodeConfig
+	onConfigChange: (config: BertyNodeConfig) => void
+}> = ({ config, onConfigChange }) => {
+	const [{ text, padding, margin, background, border }] = useStyles()
+	const toggleNodeType = () =>
+		onConfigChange(config.type === 'external' ? defaultEmbeddedConfig : defaultExternalBridgeConfig)
+	let content: Element
+	if (config.type === 'external') {
+		content = (
+			<>
+				<TextInput
+					placeholder={'Bridge port'}
+					style={[
+						margin.top.medium,
+						background.light.grey,
+						padding.medium,
+						text.size.large,
+						border.radius.small,
+					]}
+					value={`${config.port}`}
+					onChangeText={(text) => onConfigChange({ ...config, port: parseInt(text, 10) })}
+				/>
+			</>
+		)
+	} else {
+		content = (
+			<>
+				<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+					<Text>Persist: </Text>
+					<Switch
+						value={config.opts.persistance}
+						onValueChange={() =>
+							onConfigChange({
+								...config,
+								opts: { ...config.opts, persistance: !config.opts.persistance },
+							})
+						}
+					/>
+				</View>
+			</>
+		)
+	}
+	return (
+		<>
+			<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+				<Switch value={config.type === 'external'} onValueChange={toggleNodeType} />
+				<Text> {config.type}</Text>
+			</View>
+			{content}
+		</>
+	)
+}
+
 const CreateYourAccount: React.FC<{
 	next: Navigation
 }> = ({ next }) => {
 	const [name, setName] = useState('')
-	const [bridgePort, setBridgePort] = useState(1337)
+	const [nodeConfig, setNodeConfig] = useState(
+		__DEV__ ? defaultExternalBridgeConfig : defaultEmbeddedConfig,
+	)
 	const [{ text, padding, margin, background, border }] = useStyles()
 	const createAccount = Chat.useAccountCreate()
 	return (
@@ -267,7 +334,7 @@ const CreateYourAccount: React.FC<{
 					button={{
 						text: t('onboarding.create-account.button'),
 						onPress: async (): Promise<void> => {
-							createAccount({ name: name || 'Anonymous 1337', bridgePort })
+							createAccount({ name: name || 'Anonymous 1337', nodeConfig })
 							// @TODO: Error handling
 							next()
 						},
@@ -284,19 +351,7 @@ const CreateYourAccount: React.FC<{
 						]}
 						onChangeText={setName}
 					/>
-					{__DEV__ && (
-						<TextInput
-							placeholder={'Bridge port'}
-							style={[
-								margin.top.medium,
-								background.light.grey,
-								padding.medium,
-								text.size.large,
-								border.radius.small,
-							]}
-							onChangeText={(text) => setBridgePort(parseInt(text, 10))}
-						/>
-					)}
+					{__DEV__ && <NodeConfigInput onConfigChange={setNodeConfig} config={nodeConfig} />}
 				</SwiperCard>
 			)}
 		</Translation>

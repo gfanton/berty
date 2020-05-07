@@ -333,9 +333,14 @@ export const transactions: Transactions = {
 		)
 		for (const { pk } of multiMemberConversationsOfAccount) {
 			if (pk) {
+				const gpkb = strToBuf(pk)
+				/*yield* protocol.client.transactions.activateGroup({
+					id: accountId,
+					groupPk: gpkb,
+				})*/
 				yield* protocol.transactions.client.listenToGroup({
 					clientId: accountId,
-					groupPk: strToBuf(pk),
+					groupPk: gpkb,
 				})
 			}
 		}

@@ -1,10 +1,11 @@
 import React from 'react'
-import { View, ScrollView } from 'react-native'
+import { View, ScrollView, Text } from 'react-native'
 import { Layout } from 'react-native-ui-kitten'
 import { useStyles } from '@berty-tech/styles'
 import { HeaderSettings } from '../shared-components/Header'
 import { ButtonSetting, ButtonSettingRow } from '../shared-components/SettingsButtons'
 import { ScreenProps, useNavigation } from '@berty-tech/berty-navigation'
+import { Settings } from '@berty-tech/hooks'
 
 //
 // DevTools
@@ -60,6 +61,16 @@ const HeaderDevTools: React.FC<{}> = () => {
 const BodyDevTools: React.FC<{}> = () => {
 	const _styles = useStylesDevTools()
 	const [{ padding, flex, margin, color, text }] = useStyles()
+	const settings = Settings.useSettings()
+	const toggleNodeType = Settings.useToggleNodeType()
+	const togglePersist = Settings.useTogglePersist()
+	if (!settings) {
+		return (
+			<View style={[padding.medium, flex.tiny, margin.bottom.small]}>
+				<Text>No settings</Text>
+			</View>
+		)
+	}
 	return (
 		<View style={[padding.medium, flex.tiny, margin.bottom.small]}>
 			<ButtonSetting
@@ -71,12 +82,20 @@ const BodyDevTools: React.FC<{}> = () => {
 				disabled
 			/>
 			<ButtonSetting
-				name='local gRPC'
+				name='Persist'
 				icon='hard-drive-outline'
 				iconSize={30}
-				iconColor={color.dark.grey}
-				toggled
-				disabled
+				iconColor={'grey'}
+				toggled={settings.nodeConfig.persist}
+				onPress={togglePersist}
+			/>
+			<ButtonSetting
+				name='External node'
+				icon='hard-drive-outline'
+				iconSize={30}
+				iconColor={'grey'}
+				toggled={settings.nodeConfig.nodeType === Settings.store.main.BertyNodeType.External}
+				onPress={toggleNodeType}
 			/>
 			<ButtonSetting
 				name='Console logs'

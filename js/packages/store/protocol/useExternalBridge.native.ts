@@ -1,1 +1,1 @@
-export default __DEV__
+export default false
