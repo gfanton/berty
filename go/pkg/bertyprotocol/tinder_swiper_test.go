@@ -11,6 +11,7 @@ import (
 	"io"
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/testutil"
 	"github.com/libp2p/go-libp2p-core/peer"
 	p2pmocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
@@ -100,7 +101,7 @@ func TestGenerateRendezvousPointForPeriod(t *testing.T) {
 }
 
 func TestAnnounceWatchForPeriod(t *testing.T) {
-	defaultTime := time.Date(2020, 04, 10, 12, 00, 00, 0, time.UTC)
+	defaultTime := time.Now()
 
 	cases := []struct {
 		expectedPeersFound int
@@ -125,6 +126,7 @@ func TestAnnounceWatchForPeriod(t *testing.T) {
 		},
 	}
 
+	logger := testutil.Logger(t)
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("tc: %d", i), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -137,6 +139,7 @@ func TestAnnounceWatchForPeriod(t *testing.T) {
 			defer rdv_cleanup()
 
 			opts := &ipfsutil.TestingAPIOpts{
+				Logger:  logger,
 				Mocknet: mn,
 				RDVPeer: rdvp.Peerstore().PeerInfo(rdvp.ID()),
 			}
@@ -148,6 +151,11 @@ func TestAnnounceWatchForPeriod(t *testing.T) {
 
 			apiB, cleanup := ipfsutil.TestingCoreAPIUsingMockNet(ctx, t, opts)
 			defer cleanup()
+
+			err = mn.LinkAll()
+			require.NoError(t, err)
+			err = mn.ConnectAllButSelf()
+			require.NoError(t, err)
 
 			swiperA := newSwiper(apiA.Tinder(), zap.NewNop(), time.Hour)
 			swiperB := newSwiper(apiB.Tinder(), zap.NewNop(), time.Hour)
@@ -170,6 +178,7 @@ func TestAnnounceWatchForPeriod(t *testing.T) {
 				}
 			}()
 
+			time.Sleep(time.Millisecond * 100)
 			var ch chan peer.AddrInfo
 			ch, errB := swiperB.watchForPeriod(ctx, tc.topicB, tc.seedB, defaultTime)
 
