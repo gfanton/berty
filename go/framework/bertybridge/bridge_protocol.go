@@ -24,7 +24,6 @@ import (
 
 	keystore "github.com/ipfs/go-ipfs-keystore"
 	"github.com/ipfs/go-ipfs/core"
-	ipfs_interface "github.com/ipfs/interface-go-ipfs-core"
 )
 
 var defaultProtocolRendezVousPeer = config.BertyMobile.RendezVousPeer
@@ -48,7 +47,7 @@ type ProtocolConfig struct {
 	orbitDBDirectory string
 
 	// internal
-	coreAPI ipfs_interface.CoreAPI
+	coreAPI ipfsutil.ExtendedCoreAPI
 }
 
 func NewProtocolConfig() *ProtocolConfig {
@@ -97,7 +96,7 @@ func newProtocolBridge(logger *zap.Logger, config *ProtocolConfig) (*Protocol, e
 	ctx := context.Background()
 
 	// setup coreapi if needed
-	var api ipfs_interface.CoreAPI
+	var api ipfsutil.ExtendedCoreAPI
 	var node *core.IpfsNode
 	var dht *dht.IpfsDHT
 	{

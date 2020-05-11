@@ -36,7 +36,7 @@ type CoreAPIConfig struct {
 	Routing           ipfs_libp2p.RoutingOption
 }
 
-func NewCoreAPI(ctx context.Context, cfg *CoreAPIConfig, opts ...CoreAPIOption) (ipfs_interface.CoreAPI, *ipfs_core.IpfsNode, error) {
+func NewCoreAPI(ctx context.Context, cfg *CoreAPIConfig, opts ...CoreAPIOption) (ExtendedCoreAPI, *ipfs_core.IpfsNode, error) {
 	bcfg, err := CreateBuildConfig(cfg)
 	if err != nil {
 		return nil, nil, errcode.TODO.Wrap(err)
@@ -46,7 +46,7 @@ func NewCoreAPI(ctx context.Context, cfg *CoreAPIConfig, opts ...CoreAPIOption) 
 }
 
 // NewConfigurableCoreAPI returns an IPFS CoreAPI from a provided ipfs_node.BuildCfg
-func NewConfigurableCoreAPI(ctx context.Context, bcfg *ipfs_node.BuildCfg, opts ...CoreAPIOption) (ipfs_interface.CoreAPI, *ipfs_core.IpfsNode, error) {
+func NewConfigurableCoreAPI(ctx context.Context, bcfg *ipfs_node.BuildCfg, opts ...CoreAPIOption) (ExtendedCoreAPI, *ipfs_core.IpfsNode, error) {
 	node, err := ipfs_core.NewNode(ctx, bcfg)
 	if err != nil {
 		return nil, nil, errcode.TODO.Wrap(err)
@@ -66,7 +66,7 @@ func NewConfigurableCoreAPI(ctx context.Context, bcfg *ipfs_node.BuildCfg, opts 
 		}
 	}
 
-	return api, node, nil
+	return NewExtendedCoreAPI(node.PeerHost, api), node, nil
 }
 
 func CreateBuildConfig(opts *CoreAPIConfig) (*ipfs_node.BuildCfg, error) {

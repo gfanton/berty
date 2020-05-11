@@ -10,14 +10,11 @@ import (
 
 	ggio "github.com/gogo/protobuf/io"
 	p2pcrypto "github.com/libp2p/go-libp2p-core/crypto"
-	p2phelpers "github.com/libp2p/go-libp2p-core/helpers"
 	p2pnetwork "github.com/libp2p/go-libp2p-core/network"
 )
 
 // Request init a handshake with the responder
 func Request(stream p2pnetwork.Stream, ownAccountID p2pcrypto.PrivKey, peerAccountID p2pcrypto.PubKey) error {
-	defer p2phelpers.FullClose(stream)
-
 	hc := &handshakeContext{
 		reader:          ggio.NewDelimitedReader(stream, 2048),
 		writer:          ggio.NewDelimitedWriter(stream),
