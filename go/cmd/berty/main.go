@@ -18,6 +18,7 @@ import (
 	"berty.tech/berty/v2/go/internal/config"
 	"berty.tech/berty/v2/go/internal/grpcutil"
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/banner"
 	"berty.tech/berty/v2/go/pkg/bertydemo"
 	"berty.tech/berty/v2/go/pkg/bertyprotocol"
@@ -75,6 +76,7 @@ func main() {
 		globalLibp2pDebug = globalFlags.Bool("debug-p2p", false, "libp2p debug mode")
 		globalOrbitDebug  = globalFlags.Bool("debug-odb", false, "orbitdb debug mode")
 		globalLogToFile   = globalFlags.String("logfile", "", "if specified, will log everything in JSON into a file and nothing on stderr")
+		globalTracer      = globalFlags.String("tracer", "", "specify \"stdout\" to output tracing on stdout or <hostname:port> to trace on jaeger")
 
 		bannerFlags = flag.NewFlagSet("banner", flag.ExitOnError)
 		bannerLight = bannerFlags.Bool("light", false, "light mode")
@@ -165,13 +167,16 @@ func main() {
 		Usage:   "mini",
 		FlagSet: miniClientDemoFlags,
 		Exec: func(args []string) error {
-			ctx := context.Background()
-
 			if err := globalPreRun(); err != nil {
 				return err
 			}
 
-			rootDS, dsLock, err := getRootDatastore(miniClientDemoPath)
+			flush := tracer.InitTracer(*globalTracer, "berty-mini")
+			defer flush()
+			ctx, span := tracer.NewNamedSpan(context.Background(), "cmd-root")
+			defer span.End()
+
+			rootDS, dsLock, err := getRootDatastore(ctx, miniClientDemoPath)
 			if err != nil {
 				return errcode.TODO.Wrap(err)
 			}
@@ -211,7 +216,7 @@ func main() {
 				l = logger
 			}
 
-			mini.Main(&mini.Opts{
+			mini.Main(ctx, &mini.Opts{
 				RemoteAddr:      remoteAddr,
 				GroupInvitation: *miniClientDemoGroup,
 				Port:            *miniClientDemoPort,
@@ -233,7 +238,10 @@ func main() {
 				return err
 			}
 
-			ctx := context.Background()
+			flush := tracer.InitTracer(*globalTracer, "berty-daemon")
+			defer flush()
+			ctx, span := tracer.NewNamedSpan(context.Background(), "cmd-root")
+			defer span.End()
 
 			var api iface.CoreAPI
 			{
@@ -294,7 +302,7 @@ func main() {
 			var protocol bertyprotocol.Service
 			{
 
-				rootDS, dsLock, err := getRootDatastore(clientProtocolPath)
+				rootDS, dsLock, err := getRootDatastore(ctx, clientProtocolPath)
 				if err != nil {
 					return errcode.TODO.Wrap(err)
 				}
@@ -310,7 +318,7 @@ func main() {
 				// initialize new protocol client
 				opts := bertyprotocol.Opts{
 					IpfsCoreAPI:     api,
-					Logger:          logger.Named("bertyproocol"),
+					Logger:          logger.Named("bertyprotocol"),
 					RootContext:     ctx,
 					RootDatastore:   rootDS,
 					MessageKeystore: mk,
@@ -403,7 +411,10 @@ func main() {
 				return err
 			}
 
-			ctx := context.Background()
+			flush := tracer.InitTracer(*globalTracer, "berty-demo")
+			defer flush()
+			ctx, span := tracer.NewNamedSpan(context.Background(), "cmd-root")
+			defer span.End()
 
 			// demo
 			var demo *bertydemo.Service
@@ -517,11 +528,14 @@ func main() {
 	}
 }
 
-func getRootDatastore(optPath *string) (datastore.Batching, *fslock.Lock, error) {
+func getRootDatastore(ctx context.Context, optPath *string) (datastore.Batching, *fslock.Lock, error) {
 	var (
 		baseDS datastore.Batching = sync_ds.MutexWrap(datastore.NewMapDatastore())
 		lock   *fslock.Lock
 	)
+
+	ctx, span := tracer.NewSpan(ctx)
+	defer span.End()
 
 	if optPath != nil && *optPath != cacheleveldown.InMemoryDirectory {
 		basePath := path.Join(*optPath, "berty")
