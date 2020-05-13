@@ -5,15 +5,19 @@ import (
 	"sync"
 
 	"berty.tech/berty/v2/go/internal/cryptoutil"
+	"berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	"berty.tech/berty/v2/go/pkg/errcode"
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"go.opentelemetry.io/otel/api/trace"
 )
 
 type MessageKeystore struct {
+	tr trace.Tracer
+
 	lock                 sync.RWMutex
 	preComputedKeysCount int
 	store                datastore.Datastore
@@ -178,6 +182,7 @@ func (m *MessageKeystore) PutDeviceChainKey(ctx context.Context, device crypto.P
 // NewMessageKeystore instantiate a new MessageKeystore
 func NewMessageKeystore(s datastore.Datastore) *MessageKeystore {
 	return &MessageKeystore{
+		tr:                   tracer.Tracer("MessageKeystore"),
 		preComputedKeysCount: 100,
 		store:                s,
 	}

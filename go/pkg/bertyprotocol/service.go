@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"berty.tech/berty/v2/go/internal/ipfsutil"
+	"berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	"berty.tech/berty/v2/go/pkg/errcode"
 	orbitdb "berty.tech/go-orbit-db"
@@ -13,6 +14,7 @@ import (
 	ds_sync "github.com/ipfs/go-datastore/sync"
 	ipfs_core "github.com/ipfs/go-ipfs/core"
 	ipfs_coreapi "github.com/ipfs/interface-go-ipfs-core"
+	"go.opentelemetry.io/otel/api/trace"
 	"go.uber.org/zap"
 )
 
@@ -28,8 +30,11 @@ type Service interface {
 
 type service struct {
 	// variables
-	ctx             context.Context
-	logger          *zap.Logger
+	ctx context.Context
+
+	logger *zap.Logger
+	tracer trace.Tracer
+
 	ipfsCoreAPI     ipfs_coreapi.CoreAPI
 	odb             *bertyOrbitDB
 	accountGroup    *groupContext
@@ -42,6 +47,7 @@ type service struct {
 
 // Opts contains optional configuration flags for building a new Client
 type Opts struct {
+	TracerProvider  trace.Provider
 	Logger          *zap.Logger
 	IpfsCoreAPI     ipfs_coreapi.CoreAPI
 	DeviceKeystore  DeviceKeystore
@@ -53,8 +59,8 @@ type Opts struct {
 }
 
 func defaultClientOptions(opts *Opts) error {
-	if opts.Logger == nil {
-		opts.Logger = zap.NewNop()
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = tracer.Provider()
 	}
 
 	if opts.RootContext == nil {
@@ -105,9 +111,11 @@ func New(opts Opts) (Service, error) {
 	}
 
 	return &service{
-		ctx:             opts.RootContext,
+		ctx:    opts.RootContext,
+		tracer: tracer.Tracer("bertyprotocol"),
+		logger: opts.Logger,
+
 		ipfsCoreAPI:     opts.IpfsCoreAPI,
-		logger:          opts.Logger,
 		odb:             odb,
 		deviceKeystore:  opts.DeviceKeystore,
 		createdIPFSNode: opts.createdIPFSNode,

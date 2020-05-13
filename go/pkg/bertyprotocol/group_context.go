@@ -1,21 +1,21 @@
 package bertyprotocol
 
 import (
-	"encoding/base64"
-	"fmt"
-
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"go.opentelemetry.io/otel/api/trace"
 	"go.uber.org/zap"
 )
 
 type groupContext struct {
+	logger *zap.Logger
+	tracer trace.Tracer
+
 	group           *bertytypes.Group
 	metadataStore   *metadataStore
 	messageStore    *messageStore
 	messageKeystore *MessageKeystore
 	memberDevice    *ownMemberDevice
-	logger          *zap.Logger
 }
 
 func (gc *groupContext) MessageKeystore() *MessageKeystore {
@@ -64,6 +64,5 @@ func newContextGroup(group *bertytypes.Group, metadataStore *metadataStore, mess
 		messageStore:    messageStore,
 		messageKeystore: messageKeystore,
 		memberDevice:    memberDevice,
-		logger:          logger.With(zap.String("group-id", fmt.Sprintf("%.6s", base64.StdEncoding.EncodeToString(group.PublicKey)))),
 	}
 }

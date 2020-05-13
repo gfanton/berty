@@ -7,15 +7,22 @@ import (
 
 	"berty.tech/berty/v2/go/internal/tracer"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 
-	ma "github.com/multiformats/go-multiaddr"
+	"go.opentelemetry.io/otel/api/kv"
+)
+
+var (
+	tr = tracer.Tracer("ipfsutil")
 )
 
 // parseIpfsAddr is a function that takes in addr string and return ipfsAddrs
 func ParseAndResolveIpfsAddr(ctx context.Context, addr string) (*peer.AddrInfo, error) {
-	ctx, span := tracer.NewSpan(ctx)
+	ctx, span := tr.Start(ctx, "ParseAndResolve ipfs addr")
 	defer span.End()
+
+	span.SetAttributes(kv.String("addr", addr))
 
 	maddr, err := ma.NewMultiaddr(addr)
 	if err != nil {

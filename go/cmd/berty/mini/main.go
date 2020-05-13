@@ -116,7 +116,7 @@ func newService(logger *zap.Logger, ctx context.Context, opts *Opts) (bertyproto
 }
 
 func Main(ctx context.Context, opts *Opts) {
-	ctx, span := tracer.NewSpan(ctx)
+	ctx, span := tracer.Tracer("mini").Start(ctx, "main")
 	defer span.End()
 
 	p2plog.SetAllLoggers(p2plog.LevelFatal)

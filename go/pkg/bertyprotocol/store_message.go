@@ -6,6 +6,7 @@ import (
 
 	"encoding/base64"
 
+	"berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	"berty.tech/berty/v2/go/pkg/errcode"
 	ipfslog "berty.tech/go-ipfs-log"
@@ -17,6 +18,7 @@ import (
 	"berty.tech/go-orbit-db/stores/operation"
 	coreapi "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"go.opentelemetry.io/otel/api/trace"
 	"go.uber.org/zap"
 )
 
@@ -25,10 +27,12 @@ const groupMessageStoreType = "berty_group_messages"
 type messageStore struct {
 	basestore.BaseStore
 
-	devKS  DeviceKeystore
-	mks    *MessageKeystore
-	g      *bertytypes.Group
+	devKS DeviceKeystore
+	mks   *MessageKeystore
+	g     *bertytypes.Group
+
 	logger *zap.Logger
+	tracer trace.Tracer
 }
 
 func (m *messageStore) setLogger(l *zap.Logger) {
@@ -75,6 +79,9 @@ func (m *messageStore) openMessage(ctx context.Context, e ipfslog.Entry) (*berty
 }
 
 func (m *messageStore) ListMessages(ctx context.Context) (<-chan *bertytypes.GroupMessageEvent, error) {
+	ctx, span := m.tracer.Start(ctx, "List Message")
+	defer span.End()
+
 	out := make(chan *bertytypes.GroupMessageEvent)
 	ch := make(chan ipfslog.Entry)
 
@@ -102,6 +109,9 @@ func (m *messageStore) ListMessages(ctx context.Context) (<-chan *bertytypes.Gro
 }
 
 func (m *messageStore) AddMessage(ctx context.Context, payload []byte) (operation.Operation, error) {
+	ctx, span := m.tracer.Start(ctx, "Add Message")
+	defer span.End()
+
 	md, err := m.devKS.MemberDeviceForGroup(m.g)
 	if err != nil {
 		return nil, errcode.ErrInternal.Wrap(err)
@@ -135,9 +145,11 @@ func constructorFactoryGroupMessage(s *bertyOrbitDB) iface.StoreConstructor {
 		}
 
 		store := &messageStore{
-			devKS:  s.deviceKeystore,
-			mks:    s.messageKeystore,
-			g:      g,
+			devKS: s.deviceKeystore,
+			mks:   s.messageKeystore,
+			g:     g,
+
+			tracer: tracer.Tracer("MessageStore"),
 			logger: zap.NewNop(),
 		}
 
@@ -149,7 +161,11 @@ func constructorFactoryGroupMessage(s *bertyOrbitDB) iface.StoreConstructor {
 
 		go func() {
 			for e := range store.Subscribe(ctx) {
+				ctx, span := store.tracer.Start(ctx, "StoreEvent", trace.WithNewRoot())
+				defer span.End()
+
 				entry := ipfslog.Entry(nil)
+				span.AddEvent(ctx, "StoreEvent")
 
 				store.logger.Debug("received store event", zap.Any("raw event", e))
 
@@ -172,8 +188,10 @@ func constructorFactoryGroupMessage(s *bertyOrbitDB) iface.StoreConstructor {
 				}
 
 				store.logger.Debug("received payload", zap.String("payload", string(messageEvent.Message)))
-
-				store.Emit(ctx, messageEvent)
+				store.tracer.WithSpan(ctx, "EmitMessage", func(ctx context.Context) error {
+					store.Emit(ctx, messageEvent)
+					return nil
+				})
 			}
 		}()
 

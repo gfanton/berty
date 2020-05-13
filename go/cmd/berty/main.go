@@ -18,12 +18,13 @@ import (
 	"berty.tech/berty/v2/go/internal/config"
 	"berty.tech/berty/v2/go/internal/grpcutil"
 	"berty.tech/berty/v2/go/internal/ipfsutil"
-	"berty.tech/berty/v2/go/internal/tracer"
+	tracer "berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/banner"
 	"berty.tech/berty/v2/go/pkg/bertydemo"
 	"berty.tech/berty/v2/go/pkg/bertyprotocol"
 	"berty.tech/berty/v2/go/pkg/errcode"
 	"berty.tech/go-orbit-db/cache/cacheleveldown"
+
 	datastore "github.com/ipfs/go-datastore"
 	sync_ds "github.com/ipfs/go-datastore/sync"
 	badger "github.com/ipfs/go-ds-badger"
@@ -51,6 +52,8 @@ import (
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	grpc_trace "go.opentelemetry.io/otel/plugin/grpctrace"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,15 +65,20 @@ import (
 const ResolveTimeout = time.Second * 10
 
 // Default ipfs bootstrap & rendezvous point server
-var DevRendezVousPoint = config.BertyDev.RendezVousPeer
-var DefaultBootstrap = config.BertyDev.Bootstrap
-var DefaultMCBind = config.BertyDev.DefaultMCBind
+var (
+	tr = tracer.Tracer("berty")
+
+	DevRendezVousPoint = config.BertyDev.RendezVousPeer
+	DefaultBootstrap   = config.BertyDev.Bootstrap
+	DefaultMCBind      = config.BertyDev.DefaultMCBind
+)
 
 func main() {
 	log.SetFlags(0)
 
 	var (
-		logger            *zap.Logger
+		logger *zap.Logger
+
 		globalFlags       = flag.NewFlagSet("berty", flag.ExitOnError)
 		globalDebug       = globalFlags.Bool("debug", false, "berty debug mode")
 		globalLibp2pDebug = globalFlags.Bool("debug-p2p", false, "libp2p debug mode")
@@ -99,7 +107,13 @@ func main() {
 		miniClientDemoRDVP       = miniClientDemoFlags.String("rdvp", DevRendezVousPoint, "rendezvous point maddr")
 	)
 
-	globalPreRun := func() error {
+	type cleanupFunc func()
+	globalPreRun := func() (context.Context, cleanupFunc, error) {
+		flush := initTracer(*globalTracer)
+
+		ctx, span := tr.Start(context.Background(), "pre-run")
+		defer span.End()
+
 		mrand.Seed(srand.Secure())
 		isDebugEnabled := *globalDebug || *globalOrbitDebug || *globalLibp2pDebug
 
@@ -122,7 +136,8 @@ func main() {
 
 		var err error
 		if logger, err = config.Build(); err != nil {
-			return errcode.TODO.Wrap(err)
+			flush()
+			return nil, nil, errcode.TODO.Wrap(err)
 		}
 
 		if *globalLibp2pDebug {
@@ -133,7 +148,7 @@ func main() {
 			zap.ReplaceGlobals(logger)
 		}
 
-		return nil
+		return ctx, flush, nil
 	}
 
 	banner := &ffcli.Command{
@@ -141,7 +156,7 @@ func main() {
 		Usage:   "banner",
 		FlagSet: bannerFlags,
 		Exec: func(args []string) error {
-			if err := globalPreRun(); err != nil {
+			if _, _, err := globalPreRun(); err != nil {
 				return err
 			}
 			if *bannerLight {
@@ -167,13 +182,13 @@ func main() {
 		Usage:   "mini",
 		FlagSet: miniClientDemoFlags,
 		Exec: func(args []string) error {
-			if err := globalPreRun(); err != nil {
+			ctx, cleanup, err := globalPreRun()
+			if err != nil {
 				return err
 			}
+			defer cleanup()
 
-			flush := tracer.InitTracer(*globalTracer, "berty-mini")
-			defer flush()
-			ctx, span := tracer.NewNamedSpan(context.Background(), "cmd-root")
+			ctx, span := tr.Start(ctx, "cmd-mini")
 			defer span.End()
 
 			rootDS, dsLock, err := getRootDatastore(ctx, miniClientDemoPath)
@@ -216,6 +231,7 @@ func main() {
 				l = logger
 			}
 
+			span.End()
 			mini.Main(ctx, &mini.Opts{
 				RemoteAddr:      remoteAddr,
 				GroupInvitation: *miniClientDemoGroup,
@@ -234,13 +250,13 @@ func main() {
 		Usage:   "berty daemon",
 		FlagSet: clientProtocolFlags,
 		Exec: func(args []string) error {
-			if err := globalPreRun(); err != nil {
+			ctx, cleanup, err := globalPreRun()
+			if err != nil {
 				return err
 			}
+			defer cleanup()
 
-			flush := tracer.InitTracer(*globalTracer, "berty-daemon")
-			defer flush()
-			ctx, span := tracer.NewNamedSpan(context.Background(), "cmd-root")
+			ctx, span := tr.Start(ctx, "cmd-daemon")
 			defer span.End()
 
 			var api iface.CoreAPI
@@ -296,6 +312,8 @@ func main() {
 					}
 
 				}
+
+				span.SetAttribute("peerID", node.Identity.String())
 			}
 
 			// protocol
@@ -331,6 +349,7 @@ func main() {
 				}
 
 				defer protocol.Close()
+				span.AddEvent(ctx, "protocol init")
 			}
 
 			// listeners for berty
@@ -350,19 +369,23 @@ func main() {
 
 				zapOpts := []grpc_zap.Option{}
 
+				_ = grpc_trace.UnaryClientInterceptor
+
+				tr := tracer.Tracer("grpc-server")
 				// setup grpc with zap
 				grpc_zap.ReplaceGrpcLoggerV2(grpcLogger)
 				grpcServer := grpc.NewServer(
 					grpc_middleware.WithUnaryServerChain(
 						grpc_recovery.UnaryServerInterceptor(recoverOpts...),
 						grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
-
 						grpc_zap.UnaryServerInterceptor(grpcLogger, zapOpts...),
+						grpc_trace.UnaryServerInterceptor(tr),
 					),
 					grpc_middleware.WithStreamServerChain(
 						grpc_recovery.StreamServerInterceptor(recoverOpts...),
 						grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 						grpc_zap.StreamServerInterceptor(grpcLogger, zapOpts...),
+						grpc_trace.StreamServerInterceptor(tr),
 					),
 				)
 
@@ -390,6 +413,8 @@ func main() {
 						l.Close()
 					})
 				}
+
+				span.AddEvent(ctx, "grpc init")
 			}
 
 			info, err := protocol.InstanceGetConfiguration(ctx, nil)
@@ -398,6 +423,8 @@ func main() {
 			}
 
 			logger.Info("client initialized", zap.String("peer-id", info.PeerID), zap.Strings("listeners", info.Listeners))
+
+			span.End()
 			return workers.Run()
 		},
 	}
@@ -407,13 +434,13 @@ func main() {
 		Usage:   "berty demo",
 		FlagSet: clientDemoFlags,
 		Exec: func(args []string) error {
-			if err := globalPreRun(); err != nil {
+			ctx, cleanup, err := globalPreRun()
+			if err != nil {
 				return err
 			}
+			defer cleanup()
 
-			flush := tracer.InitTracer(*globalTracer, "berty-demo")
-			defer flush()
-			ctx, span := tracer.NewNamedSpan(context.Background(), "cmd-root")
+			ctx, span := tr.Start(ctx, "cmd-daemon")
 			defer span.End()
 
 			// demo
@@ -528,13 +555,31 @@ func main() {
 	}
 }
 
+func initTracer(flag string) func() {
+	trConfig := tracer.TracerConfig{}
+	trConfig.RuntimeProvider = true
+
+	switch flag {
+	case "":
+	case "stdout":
+		trConfig.Exporter = tracer.Exporter_Stdout
+	default:
+		trConfig.Exporter = tracer.Exporter_Jaeger
+		trConfig.JaegerService = "berty"
+		trConfig.JaegerHost = flag
+	}
+
+	_, cleanup := tracer.InitTracer(trConfig)
+	return cleanup
+}
+
 func getRootDatastore(ctx context.Context, optPath *string) (datastore.Batching, *fslock.Lock, error) {
 	var (
 		baseDS datastore.Batching = sync_ds.MutexWrap(datastore.NewMapDatastore())
 		lock   *fslock.Lock
 	)
 
-	ctx, span := tracer.NewSpan(ctx)
+	ctx, span := tr.Start(ctx, "getRootDatastore")
 	defer span.End()
 
 	if optPath != nil && *optPath != cacheleveldown.InMemoryDirectory {

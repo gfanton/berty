@@ -30,7 +30,7 @@ func TestScenario_JoinGroup(t *testing.T) {
 		IsSlowTest     bool
 	}{
 
-		{"2 clients/connectAll", 2, ConnectAll, true},
+		{"5 clients/connectAll", 5, ConnectAll, true},
 
 		// @FIXME(gfanton): those tests doesn't works
 		// {"3 clients/connectAll", 3, ConnectAll, false},
@@ -44,18 +44,23 @@ func TestScenario_JoinGroup(t *testing.T) {
 				testutil.SkipSlow(t)
 			}
 
-			testingScenario_JoinGroup(t, tc.NumberOfClient, tc.ConnectFunc)
+			ctx, span := testutil.Tracer(t, "Scenario").Start(context.Background(), tc.Name)
+			defer span.End()
+
+			testingScenario_JoinGroup(ctx, t, tc.NumberOfClient, tc.ConnectFunc)
 		})
 	}
 }
 
-func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingProtocolFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
+func testingScenario_JoinGroup(ctx context.Context, t *testing.T, nService int, cf ConnnectTestingProtocolFunc) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	logger := testutil.Logger(t)
 
 	opts := TestingOpts{
 		Mocknet: libp2p_mocknet.New(ctx),
-		Logger:  testutil.Logger(t),
+		Logger:  logger,
 	}
 
 	// Setup test
@@ -220,9 +225,12 @@ func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingPro
 }
 
 func TestScenario_ContactMessage(t *testing.T) {
+	ctx, span := testutil.Tracer(t, "Scenario").Start(context.Background(), "ContactMessage")
+	defer span.End()
+
 	const nService = 1
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	opts := TestingOpts{

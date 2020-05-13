@@ -34,6 +34,7 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/multiformats/go-multiaddr-net v0.1.4
+	github.com/multiformats/go-multibase v0.0.2
 	github.com/multiformats/go-multihash v0.0.13
 	github.com/oklog/run v1.1.0
 	github.com/peterbourgon/ff v1.6.0
@@ -41,8 +42,9 @@ require (
 	github.com/rivo/tview v0.0.0-20200219210816-cd38d7432498
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/stretchr/testify v1.5.1
-	go.opentelemetry.io/otel v0.4.3
-	go.opentelemetry.io/otel/exporters/trace/jaeger v0.4.3
+	go.opencensus.io v0.22.3
+	go.opentelemetry.io/otel v0.5.0
+	go.opentelemetry.io/otel/exporters/trace/jaeger v0.5.0
 	go.uber.org/zap v1.14.1
 	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
