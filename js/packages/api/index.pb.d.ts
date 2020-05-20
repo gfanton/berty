@@ -212,6 +212,7 @@ export namespace berty {
             eventType?: (berty.types.EventType|null);
             payload?: (Uint8Array|null);
             sig?: (Uint8Array|null);
+            metadata?: ({ [k: string]: string }|null);
         }
 
         class GroupMetadata implements IGroupMetadata {
@@ -219,6 +220,7 @@ export namespace berty {
             public eventType: berty.types.EventType;
             public payload: Uint8Array;
             public sig: Uint8Array;
+            public metadata: { [k: string]: string };
             public static create(properties?: berty.types.IGroupMetadata): berty.types.GroupMetadata;
             public static encode(message: berty.types.IGroupMetadata, writer?: $protobuf.Writer): $protobuf.Writer;
             public static encodeDelimited(message: berty.types.IGroupMetadata, writer?: $protobuf.Writer): $protobuf.Writer;
@@ -254,6 +256,7 @@ export namespace berty {
             counter?: (number|Long|null);
             devicePk?: (Uint8Array|null);
             sig?: (Uint8Array|null);
+            metadata?: ({ [k: string]: string }|null);
         }
 
         class MessageHeaders implements IMessageHeaders {
@@ -261,6 +264,7 @@ export namespace berty {
             public counter: (number|Long);
             public devicePk: Uint8Array;
             public sig: Uint8Array;
+            public metadata: { [k: string]: string };
             public static create(properties?: berty.types.IMessageHeaders): berty.types.MessageHeaders;
             public static encode(message: berty.types.IMessageHeaders, writer?: $protobuf.Writer): $protobuf.Writer;
             public static encodeDelimited(message: berty.types.IMessageHeaders, writer?: $protobuf.Writer): $protobuf.Writer;

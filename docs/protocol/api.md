@@ -86,6 +86,7 @@
     - [GroupMessageSubscribe](#berty.types.GroupMessageSubscribe)
     - [GroupMessageSubscribe.Request](#berty.types.GroupMessageSubscribe.Request)
     - [GroupMetadata](#berty.types.GroupMetadata)
+    - [GroupMetadata.MetadataEntry](#berty.types.GroupMetadata.MetadataEntry)
     - [GroupMetadataEvent](#berty.types.GroupMetadataEvent)
     - [GroupMetadataList](#berty.types.GroupMetadataList)
     - [GroupMetadataList.Request](#berty.types.GroupMetadataList.Request)
@@ -100,6 +101,7 @@
     - [InstanceGetConfiguration.Request](#berty.types.InstanceGetConfiguration.Request)
     - [MessageEnvelope](#berty.types.MessageEnvelope)
     - [MessageHeaders](#berty.types.MessageHeaders)
+    - [MessageHeaders.MetadataEntry](#berty.types.MessageHeaders.MetadataEntry)
     - [MultiMemberGrantAdminRole](#berty.types.MultiMemberGrantAdminRole)
     - [MultiMemberGroupAddAliasResolver](#berty.types.MultiMemberGroupAddAliasResolver)
     - [MultiMemberGroupAdminRoleGrant](#berty.types.MultiMemberGroupAdminRoleGrant)
@@ -760,6 +762,16 @@ GroupMetadata is used in GroupEnvelope and only readable by invited group member
 | event_type | [EventType](#berty.types.EventType) |  | event_type defines which event type is used |
 | payload | [bytes](#bytes) |  | the serialization depends on event_type, event is symmetrically encrypted |
 | sig | [bytes](#bytes) |  | sig is the signature of the payload, it depends on the event_type for the used key |
+| metadata | [GroupMetadata.MetadataEntry](#berty.types.GroupMetadata.MetadataEntry) | repeated | metadata allow to pass custom informations |
+
+<a name="berty.types.GroupMetadata.MetadataEntry"></a>
+
+### GroupMetadata.MetadataEntry
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
 
 <a name="berty.types.GroupMetadataEvent"></a>
 
@@ -869,6 +881,16 @@ MessageHeaders is used in MessageEnvelope and only readable by invited group mem
 | counter | [uint64](#uint64) |  | counter is the current counter value for the specified device |
 | device_pk | [bytes](#bytes) |  | device_pk is the public key of the device sending the message |
 | sig | [bytes](#bytes) |  | sig is the signature of the encrypted message using the device&#39;s private key |
+| metadata | [MessageHeaders.MetadataEntry](#berty.types.MessageHeaders.MetadataEntry) | repeated | metadata allow to pass custom informations |
+
+<a name="berty.types.MessageHeaders.MetadataEntry"></a>
+
+### MessageHeaders.MetadataEntry
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
 
 <a name="berty.types.MultiMemberGrantAdminRole"></a>
 

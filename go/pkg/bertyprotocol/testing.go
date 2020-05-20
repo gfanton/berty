@@ -12,6 +12,7 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"go.opentelemetry.io/otel/api/trace"
 	grpc_trace "go.opentelemetry.io/otel/plugin/grpctrace"
 
 	keystore "github.com/ipfs/go-ipfs-keystore"
@@ -32,9 +33,10 @@ type TestingProtocol struct {
 }
 
 type TestingOpts struct {
-	Logger  *zap.Logger
-	Mocknet libp2p_mocknet.Mocknet
-	RDVPeer peer.AddrInfo
+	Logger         *zap.Logger
+	TracerProvider trace.Provider
+	Mocknet        libp2p_mocknet.Mocknet
+	RDVPeer        peer.AddrInfo
 }
 
 func NewTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpts) (*TestingProtocol, func()) {
@@ -50,6 +52,7 @@ func NewTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpts) (*
 	}
 
 	node, cleanupNode := ipfsutil.TestingCoreAPIUsingMockNet(ctx, t, ipfsopts)
+
 	serviceOpts := Opts{
 		Logger:          opts.Logger,
 		DeviceKeystore:  NewDeviceKeystore(keystore.NewMemKeystore()),
@@ -60,9 +63,14 @@ func NewTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpts) (*
 
 	service, cleanupService := TestingService(t, serviceOpts)
 
+	if opts.TracerProvider == nil {
+		servicename := node.MockNode().Identity.ShortString()
+		opts.TracerProvider = tracer.NewTestingProvider(t, servicename)
+	}
+
 	// setup client
-	trClient := tracer.Tracer("grpc-client")
-	trServer := tracer.Tracer("grpc-server")
+	trClient := opts.TracerProvider.Tracer("grpc-client")
+	trServer := opts.TracerProvider.Tracer("grpc-server")
 	grpcLogger := opts.Logger.Named("grpc")
 	zapOpts := []grpc_zap.Option{}
 
@@ -127,7 +135,9 @@ func generateTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpt
 	cls := make([]func(), n)
 	tps := make([]*TestingProtocol, n)
 	for i := range tps {
-		opts.Logger = logger.Named(fmt.Sprintf("pt[%d]", i))
+		svcName := fmt.Sprintf("pt[%d]", i)
+		opts.Logger = logger.Named(svcName)
+		opts.TracerProvider = tracer.NewTestingProvider(t, svcName)
 
 		tps[i], cls[i] = NewTestingProtocol(ctx, t, opts)
 	}
@@ -228,4 +238,18 @@ func ConnectInLine(t *testing.T, m libp2p_mocknet.Mocknet) {
 	t.Helper()
 
 	t.Fatal("not implemented")
+}
+
+// wip
+func UnaryClientInterceptor(tracer trace.Tracer) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		return nil
+	}
 }

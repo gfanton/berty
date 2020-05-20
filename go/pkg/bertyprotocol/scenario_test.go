@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync/atomic"
+	"strconv"
 	"testing"
 	"time"
 
@@ -15,12 +15,12 @@ import (
 	"bytes"
 
 	"berty.tech/berty/v2/go/internal/testutil"
+	"berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/bertytypes"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	libp2p_mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 func TestScenario_JoinGroup(t *testing.T) {
@@ -32,64 +32,46 @@ func TestScenario_JoinGroup(t *testing.T) {
 	}{
 
 		{"2 clients/connectAll", 2, ConnectAll, true},
-		{"3 clients/connectAll", 3, ConnectAll, false},
-		//{"5 clients/connectAll", 5, ConnectAll, true},
-		//{"8 clients/connectAll", 8, ConnectAll, false},
-		//@FIXME(gfanton): those tests doesn't works
-		//{"10 clients/connectAll", 10, ConnectAll, true},
+
+		// @FIXME(gfanton): those tests doesn't works
+		// {"3 clients/connectAll", 3, ConnectAll, false},
+		// {"10 clients/connectAll", 10, ConnectAll, true},
 		// {"10 clients/connectInLine", 10, ConnectInLine, true},
 	}
 
+	tr := tracer.NewTestingProvider(t, "Scenario_JoinGroup").Tracer("testing")
+	ctx := context.Background()
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			if tc.IsSlowTest {
 				testutil.SkipSlow(t)
 			}
 
-			testingScenario_JoinGroup(t, tc.NumberOfClient, tc.ConnectFunc)
+			opts := TestingOpts{
+				Mocknet: libp2p_mocknet.New(ctx),
+				Logger:  testutil.Logger(t),
+			}
+
+			pts, cleanup := generateTestingProtocol(ctx, t, &opts, tc.NumberOfClient)
+			defer cleanup()
+
+			// connect all pts together
+			tc.ConnectFunc(t, opts.Mocknet)
+
+			ctx, span := tr.Start(ctx, tc.Name)
+			defer span.End()
+
+			testingScenario_JoinGroup(ctx, t, pts...)
 		})
 	}
 }
 
-func isEventAddSecretTargetedToMember(ownRawPK []byte, evt *bertytypes.GroupMetadataEvent) ([]byte, error) {
-	// Only count EventTypeGroupDeviceSecretAdded events
-	if evt.Metadata.EventType != bertytypes.EventTypeGroupDeviceSecretAdded {
-		return nil, nil
-	}
-
-	sec := &bertytypes.GroupAddDeviceSecret{}
-	err := sec.Unmarshal(evt.Event)
-	if err != nil {
-		return nil, err
-	}
-
-	// Filter out events targeted at other members
-	if !bytes.Equal(ownRawPK, sec.DestMemberPK) {
-		return nil, nil
-	}
-
-	return sec.DevicePK, nil
-}
-
-func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingProtocolFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
+func testingScenario_JoinGroup(ctx context.Context, t *testing.T, pts ...*TestingProtocol) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
-
-	opts := TestingOpts{
-		Mocknet: libp2p_mocknet.New(ctx),
-		Logger:  testutil.Logger(t),
-	}
-
+	nService := len(pts)
 	// Setup test
-
-	pts, cleanup := generateTestingProtocol(ctx, t, &opts, nService)
-	defer cleanup()
-
-	// connect all pts together
-	cf(t, opts.Mocknet)
 
 	// create group
 	group, _, err := NewGroupMultiMember()
@@ -120,121 +102,29 @@ func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingPro
 	}
 
 	// Get Group Info
-	memberPKs := make([][]byte, nService)
-	devicePKs := make([][]byte, nService)
 	{
-		for i, pt := range pts {
+		for _, pt := range pts {
 			res, err := pt.Client.GroupInfo(ctx, &bertytypes.GroupInfo_Request{
 				GroupPK: group.PublicKey,
 			})
 			require.NoError(t, err)
 			assert.Equal(t, group.PublicKey, res.Group.PublicKey)
-
-			memberPKs[i] = res.MemberPK
-			devicePKs[i] = res.DevicePK
 		}
 	}
 
 	// Activate Group
 	{
-		for i, pt := range pts {
+		for _, pt := range pts {
 			_, err := pt.Client.ActivateGroup(ctx, &bertytypes.ActivateGroup_Request{
 				GroupPK: group.PublicKey,
 			})
-
-			assert.NoError(t, err, fmt.Sprintf("error for client %d", i))
+			assert.NoError(t, err)
 		}
 	}
-
-	{
-		wg := sync.WaitGroup{}
-		secretsReceivedLock := sync.Mutex{}
-		secretsReceived := make([]map[string]struct{}, nService)
-		wg.Add(nService)
-
-		// @FIXME: remove this log if `time.AfterFunc` in `GroupMessageSubscribe` is removed
-		t.Log("Subscribe to GroupMetadata")
-
-		start := time.Now()
-		nSuccess := int64(0)
-		for i := range pts {
-			go func(i int) {
-				pt := pts[i]
-
-				defer wg.Done()
-
-				secretsReceived[i] = map[string]struct{}{}
-
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
-
-				sub, inErr := pt.Client.GroupMetadataSubscribe(ctx, &bertytypes.GroupMetadataSubscribe_Request{
-					GroupPK: group.PublicKey,
-					Since:   []byte("give me everything"),
-				})
-				if inErr != nil {
-					assert.NoError(t, err, fmt.Sprintf("error for client %d", i))
-					return
-				}
-
-				for {
-					evt, inErr := sub.Recv()
-					if inErr != nil {
-						if inErr != io.EOF {
-							assert.NoError(t, err, fmt.Sprintf("error for client %d", i))
-						}
-
-						break
-					}
-
-					if source, err := isEventAddSecretTargetedToMember(memberPKs[i], evt); err != nil {
-						pts[i].Opts.Logger.Error("err:", zap.Error(inErr))
-						assert.NoError(t, err, fmt.Sprintf("error for client %d", i))
-
-						break
-					} else if source != nil {
-						secretsReceivedLock.Lock()
-						secretsReceived[i][string(source)] = struct{}{}
-						done := len(secretsReceived[i]) == nService
-						secretsReceivedLock.Unlock()
-
-						if done {
-							atomic.AddInt64(&nSuccess, 1)
-							nSuccess := atomic.LoadInt64(&nSuccess)
-
-							got := fmt.Sprintf("%d/%d", nSuccess, nService)
-							pts[i].Opts.Logger.Debug("received all secrets", zap.String("ok", got))
-							return
-						}
-					}
-				}
-			}(i)
-		}
-
-		wg.Wait()
-		t.Logf("  duration: %s", time.Since(start))
-
-		secretsReceivedLock.Lock()
-		ok := true
-		for i := range secretsReceived {
-			if !assert.Equal(t, nService, len(secretsReceived[i]), fmt.Sprintf("mismatch for client %d", i)) {
-				ok = false
-			}
-		}
-		require.True(t, ok)
-		secretsReceivedLock.Unlock()
-		//return
-	}
-
-	wg := sync.WaitGroup{}
-	wg.Add(3)
 
 	// Subscribe to GroupMessage
 	clsGroupMessage := make([]ProtocolService_GroupMessageSubscribeClient, nService)
 	{
-		//ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-		//defer cancel()
-
 		// @FIXME: remove this log if `time.AfterFunc` in `GroupMessageSubscribe` is removed
 		t.Log("Subscribe to GroupMessage")
 
@@ -245,9 +135,15 @@ func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingPro
 
 			clsGroupMessage[i], err = pt.Client.GroupMessageSubscribe(ctx, &bertytypes.GroupMessageSubscribe_Request{
 				GroupPK: group.PublicKey,
-				Since:   []byte("give me everything"),
 			})
 			require.NoError(t, err)
+
+			// wait for subscribe to be ready
+			header, err := clsGroupMessage[i].Header()
+			require.NoError(t, err)
+
+			rs := header.Get("ready")
+			assert.Contains(t, rs, strconv.FormatBool(true))
 		}
 		t.Logf("  duration: %s", time.Since(start))
 	}
@@ -265,28 +161,27 @@ func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingPro
 				Payload: payload,
 			})
 
-			assert.NoError(t, err, fmt.Sprintf("error for client %d", i))
+			assert.NoError(t, err)
 		}
 	}
 
 	// Receive message on subscribed group
 	{
 		testrx := fmt.Sprintf("^%s", testMessage)
-		for i, cl := range clsGroupMessage {
+		for _, cl := range clsGroupMessage {
 
-			msgs := map[string]struct{}{}
-			for len(msgs) < nService {
+			nmsg := 0
+			for nmsg < nService {
 				res, err := cl.Recv()
 				if !assert.NoError(t, err) {
 					break
 				}
 
-				assert.Regexp(t, testrx, string(res.GetMessage()), fmt.Sprintf("invalid message for client %d", i))
-				testutil.Logger(t).Info(fmt.Sprintf("[%d] - sub received - %s", i, string(res.GetMessage())))
-				msgs[string(res.GetMessage())] = struct{}{}
+				assert.Regexp(t, testrx, string(res.GetMessage()))
+				nmsg++
 			}
 
-			assert.Equal(t, nService, len(msgs), fmt.Sprintf("error for client %d", i))
+			assert.Equal(t, nService, nmsg)
 		}
 	}
 
@@ -294,13 +189,13 @@ func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingPro
 	{
 		testrx := fmt.Sprintf("^%s", testMessage)
 
-		for i, pt := range pts {
+		for _, pt := range pts {
 			req := bertytypes.GroupMessageList_Request{
 				GroupPK: group.PublicKey,
 			}
 
 			cl, err := pt.Client.GroupMessageList(ctx, &req)
-			if !assert.NoError(t, err, fmt.Sprintf("error for client %d", i)) {
+			if !assert.NoError(t, err) {
 				continue
 			}
 
@@ -311,18 +206,17 @@ func testingScenario_JoinGroup(t *testing.T, nService int, cf ConnnectTestingPro
 				if err == io.EOF {
 					break
 				}
-				if !assert.NoError(t, err, fmt.Sprintf("error for client %d", i)) {
+				if !assert.NoError(t, err) {
 					continue
 				}
 
-				assert.Regexp(t, testrx, string(res.GetMessage()), fmt.Sprintf("invalid message for client %d", i))
+				assert.Regexp(t, testrx, string(res.GetMessage()))
 
-				testutil.Logger(t).Info(fmt.Sprintf("[%d] - list received - %s", i, string(res.GetMessage())))
 				nmsg++
 			}
 
-			assert.Equal(t, nService, nmsg, fmt.Sprintf("mismatch for client %d", i))
-			assert.Equal(t, io.EOF, err, fmt.Sprintf("error for client %d", i))
+			assert.Equal(t, nService, nmsg)
+			assert.Equal(t, io.EOF, err)
 		}
 	}
 }

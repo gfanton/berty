@@ -96,6 +96,8 @@ export class GroupMetadata extends jspb.Message {
   getSig_asB64(): string;
   setSig(value: Uint8Array | string): void;
 
+  getMetadataMap(): jspb.Map<string, string>;
+  clearMetadataMap(): void;
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): GroupMetadata.AsObject;
   static toObject(includeInstance: boolean, msg: GroupMetadata): GroupMetadata.AsObject;
@@ -111,6 +113,7 @@ export namespace GroupMetadata {
     eventType: EventTypeMap[keyof EventTypeMap],
     payload: Uint8Array | string,
     sig: Uint8Array | string,
+    metadataMap: Array<[string, string]>,
   }
 }
 
@@ -156,6 +159,8 @@ export class MessageHeaders extends jspb.Message {
   getSig_asB64(): string;
   setSig(value: Uint8Array | string): void;
 
+  getMetadataMap(): jspb.Map<string, string>;
+  clearMetadataMap(): void;
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): MessageHeaders.AsObject;
   static toObject(includeInstance: boolean, msg: MessageHeaders): MessageHeaders.AsObject;
@@ -171,6 +176,7 @@ export namespace MessageHeaders {
     counter: number,
     devicePk: Uint8Array | string,
     sig: Uint8Array | string,
+    metadataMap: Array<[string, string]>,
   }
 }
 
