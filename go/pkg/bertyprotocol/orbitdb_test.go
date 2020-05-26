@@ -18,7 +18,6 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 func newTestOrbitDB(ctx context.Context, api ipfsutil.CoreAPIMock, t *testing.T, baseDS datastore.Batching) *bertyOrbitDB {
@@ -39,7 +38,7 @@ func newTestOrbitDB(ctx context.Context, api ipfsutil.CoreAPIMock, t *testing.T,
 	orbitdbCache := NewOrbitDatastoreCache(orbitdbDS)
 	mk := NewMessageKeystore(messagesDS)
 
-	odb, err := newBertyOrbitDB(ctx, api, NewDeviceKeystore(accountKS), mk, zap.NewNop(), &orbitdb.NewOrbitDBOptions{Cache: orbitdbCache})
+	odb, err := newBertyOrbitDB(ctx, api, NewDeviceKeystore(accountKS), mk, &orbitdb.NewOrbitDBOptions{Cache: orbitdbCache})
 	require.NoError(t, err)
 
 	return odb
