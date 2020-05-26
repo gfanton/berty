@@ -119,7 +119,7 @@ func New(opts Opts) (Service, error) {
 	odb, err := newBertyOrbitDB(opts.RootContext, opts.IpfsCoreAPI, opts.DeviceKeystore, opts.MessageKeystore, &orbitdb.NewOrbitDBOptions{
 		Cache:     opts.OrbitCache,
 		Directory: &orbitDirectory,
-		Logger:    opts.Logger,
+		Logger:    opts.Logger.Named("odb"),
 	})
 	if err != nil {
 		return nil, errcode.TODO.Wrap(err)
