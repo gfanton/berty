@@ -45,7 +45,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200519171959-a3b48390827e
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/stretchr/testify v1.5.1
-	go.opentelemetry.io/otel v0.5.0
+	go.opentelemetry.io/otel v0.6.0
 	go.opentelemetry.io/otel/exporters/trace/jaeger v0.5.0
 	go.uber.org/zap v1.14.1
 	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
@@ -56,3 +56,5 @@ require (
 )
 
 replace github.com/golang/protobuf => github.com/golang/protobuf v1.3.2
+
+replace berty.tech/go-orbit-db v1.4.1 => C:\Users\guill\go\src\berty.tech\go-orbit-db
