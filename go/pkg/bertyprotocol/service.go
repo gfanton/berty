@@ -15,6 +15,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	ds_sync "github.com/ipfs/go-datastore/sync"
 	ipfs_core "github.com/ipfs/go-ipfs/core"
+	"go.opentelemetry.io/otel/api/trace"
 	"go.uber.org/zap"
 )
 
@@ -44,6 +45,7 @@ type service struct {
 
 // Opts contains optional configuration flags for building a new Client
 type Opts struct {
+	Tracer                 trace.Tracer
 	Logger                 *zap.Logger
 	IpfsCoreAPI            ipfsutil.ExtendedCoreAPI
 	DeviceKeystore         DeviceKeystore
@@ -58,6 +60,10 @@ type Opts struct {
 }
 
 func defaultClientOptions(opts *Opts) error {
+	if opts.Tracer == nil {
+		opts.Tracer = tracer.New("bertyprotocol")
+	}
+
 	if opts.Logger == nil {
 		opts.Logger = zap.NewNop()
 	}
@@ -121,7 +127,7 @@ func New(opts Opts) (Service, error) {
 		Cache:     opts.OrbitCache,
 		Directory: &orbitDirectory,
 		Logger:    opts.Logger,
-		Tracer:    tracer.Tracer("berty-orbitdb"),
+		Tracer:    opts.Tracer,
 	})
 	if err != nil {
 		return nil, errcode.TODO.Wrap(err)

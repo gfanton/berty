@@ -59,6 +59,7 @@ func NewTestingProtocol(ctx context.Context, t *testing.T, opts *TestingOpts) (*
 		MessageKeystore: NewInMemMessageKeystore(),
 		IpfsCoreAPI:     node,
 		TinderDriver:    node.Tinder(),
+		Tracer:          opts.TracerProvider.Tracer("bertyprotocol"),
 	}
 
 	service, cleanupService := TestingService(t, serviceOpts)
