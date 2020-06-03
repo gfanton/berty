@@ -383,7 +383,7 @@ func (m *MessageKeystore) SealEnvelope(ctx context.Context, g *bertytypes.Group,
 		return nil, errcode.ErrInternal.Wrap(err)
 	}
 
-	env, err := sealEnvelopeInternal(payload, ds, deviceSK, g)
+	env, err := sealEnvelopeInternal(ctx, payload, ds, deviceSK, g)
 	if err != nil {
 		return nil, errcode.ErrCryptoEncrypt.Wrap(err)
 	}
