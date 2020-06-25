@@ -14,8 +14,10 @@ import (
 	ipfs_libp2p "github.com/ipfs/go-ipfs/core/node/libp2p"
 	ipfs_repo "github.com/ipfs/go-ipfs/repo"
 	ipfs_interface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/pkg/errors"
 
 	p2p "github.com/libp2p/go-libp2p" // nolint:staticcheck
+	host "github.com/libp2p/go-libp2p-core/host"
 	p2p_host "github.com/libp2p/go-libp2p-core/host"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer" // nolint:staticcheck
 	p2p_ps "github.com/libp2p/go-libp2p-core/peerstore"
@@ -30,6 +32,7 @@ type CoreAPIConfig struct {
 	APIAddrs       []string
 	APIConfig      config.API
 
+	HostConfig        func(host host.Host) error
 	ExtraLibp2pOption p2p.Option
 	Routing           ipfs_libp2p.RoutingOption
 
@@ -96,7 +99,7 @@ func CreateBuildConfig(repo ipfs_repo.Repo, opts *CoreAPIConfig) (*ipfs_node.Bui
 		opts = &CoreAPIConfig{}
 	}
 
-	routingOpt := ipfs_libp2p.DHTOption
+	routingOpt := ipfs_libp2p.DHTClientOption
 	if opts.Routing != nil {
 		routingOpt = opts.Routing
 	}
@@ -104,6 +107,10 @@ func CreateBuildConfig(repo ipfs_repo.Repo, opts *CoreAPIConfig) (*ipfs_node.Bui
 	hostOpt := ipfs_libp2p.DefaultHostOption
 	if opts.ExtraLibp2pOption != nil {
 		hostOpt = wrapP2POptionsToHost(hostOpt, opts.ExtraLibp2pOption)
+	}
+
+	if opts.HostConfig != nil {
+		hostOpt = wrapHostConfig(hostOpt, opts.HostConfig)
 	}
 
 	return &ipfs_node.BuildCfg{
@@ -115,7 +122,7 @@ func CreateBuildConfig(repo ipfs_repo.Repo, opts *CoreAPIConfig) (*ipfs_node.Bui
 		Host:                        hostOpt,
 		Repo:                        repo,
 		ExtraOpts: map[string]bool{
-			"pubsub": true,
+			"pubsub": false,
 		},
 	}, nil
 }
@@ -143,6 +150,22 @@ func updateRepoConfig(repo ipfs_repo.Repo, cfg *CoreAPIConfig) error {
 	}
 
 	return repo.SetConfig(rcfg)
+}
+
+func wrapHostConfig(hf ipfs_libp2p.HostOption, hc func(h host.Host) error) ipfs_libp2p.HostOption {
+	return func(ctx context.Context, id p2p_peer.ID, ps p2p_ps.Peerstore, options ...p2p.Option) (p2p_host.Host, error) {
+		h, err := hf(ctx, id, ps, options...)
+		if err != nil {
+			return nil, err
+		}
+
+		if err = hc(h); err != nil {
+			_ = h.Close()
+			return nil, errors.Wrap(err, "failed to config host")
+		}
+
+		return h, nil
+	}
 }
 
 func wrapP2POptionsToHost(hf ipfs_libp2p.HostOption, opt ...p2p.Option) ipfs_libp2p.HostOption {

@@ -97,7 +97,7 @@ func createBaseConfig() (*ipfs_cfg.Config, error) {
 
 	// Discovery
 	c.Discovery.MDNS.Enabled = true
-	c.Discovery.MDNS.Interval = 1
+	c.Discovery.MDNS.Interval = 5
 
 	// swarm listeners
 	c.Addresses.Swarm = []string{
