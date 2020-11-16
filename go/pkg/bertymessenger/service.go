@@ -366,7 +366,11 @@ func (svc *service) subscribeToGroupMonitor(groupPK []byte) error {
 				return
 			}
 
-			msgPayload, err := proto.Marshal(evt.Event)
+			meta := AppMessage_MonitorMetadata{
+				Event: evt.Event,
+			}
+
+			msgPayload, err := proto.Marshal(&meta)
 			if err != nil {
 				svc.logger.Error("unable to marshal event")
 				continue
