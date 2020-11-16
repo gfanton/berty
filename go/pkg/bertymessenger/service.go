@@ -370,20 +370,9 @@ func (svc *service) subscribeToGroupMonitor(groupPK []byte) error {
 				Event: evt.Event,
 			}
 
-			msgPayload, err := proto.Marshal(&meta)
+			payload, err := proto.Marshal(&meta)
 			if err != nil {
 				svc.logger.Error("unable to marshal event")
-				continue
-			}
-
-			var msg AppMessage
-			msg.SentDate = time.Now().Unix()
-			msg.Payload = msgPayload
-			msg.Type = AppMessage_TypeMonitorMetadata
-
-			interactionPayload, err := proto.Marshal(&msg)
-			if err != nil {
-				svc.logger.Error("unable to marshal appmessage")
 				continue
 			}
 
@@ -392,7 +381,7 @@ func (svc *service) subscribeToGroupMonitor(groupPK []byte) error {
 				CID:                   cid,
 				Type:                  AppMessage_TypeMonitorMetadata,
 				ConversationPublicKey: b64EncodeBytes(evt.GetGroupPK()),
-				Payload:               interactionPayload,
+				Payload:               payload,
 			}
 
 			err = svc.dispatcher.StreamEvent(StreamEvent_TypeInteractionUpdated, &StreamEvent_InteractionUpdated{i}, true)
