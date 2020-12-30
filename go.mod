@@ -88,7 +88,7 @@ require (
 	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stretchr/testify v1.6.1
-	github.com/tailscale/depaware v0.0.0-20201003033024-5d95aab075be
+	github.com/tailscale/depaware v0.0.0-20201214215404-77d1e9757027
 	github.com/zcalusic/sysinfo v0.0.0-20200820110305-ef1bb2697bc2
 	go.opentelemetry.io/otel v0.8.0
 	go.opentelemetry.io/otel/exporters/trace/jaeger v0.8.0
@@ -99,7 +99,7 @@ require (
 	golang.org/x/mobile v0.0.0-20200801112145-973feb4309de
 	golang.org/x/net v0.0.0-20201026091529-146b70c837a4
 	golang.org/x/sys v0.0.0-20201026133411-418715ba6fdd // indirect
-	golang.org/x/tools v0.0.0-20201030010431-2feb2bb1ff51
+	golang.org/x/tools v0.0.0-20201211185031-d93e913c1a58
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/genproto v0.0.0-20201022181438-0ff5f38871d5 // indirect
 	google.golang.org/grpc v1.33.1
@@ -112,7 +112,7 @@ require (
 	moul.io/openfiles v1.2.0
 	moul.io/srand v1.6.1
 	moul.io/testman v1.5.0
-	moul.io/u v1.18.0
+	moul.io/u v1.20.0
 	moul.io/zapconfig v1.2.0
 	moul.io/zapfilter v1.6.1
 	moul.io/zapgorm2 v1.0.1
