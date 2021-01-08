@@ -38,7 +38,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	golog.SetAllLoggers(golog.LevelError)
+	golog.SetAllLoggers(golog.LevelDebug)
 
 	host, err := createBasicHost(*seed, *port, *insecure, *quic, *ip6)
 	if err != nil {

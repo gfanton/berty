@@ -10,7 +10,9 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	quict "github.com/libp2p/go-libp2p-quic-transport"
+	routing "github.com/libp2p/go-libp2p-routing"
 )
 
 func createBasicHost(seed int64, port int, insecure, quic, ip6 bool) (host.Host, error) {
@@ -43,7 +45,10 @@ func createBasicHost(seed int64, port int, insecure, quic, ip6 bool) (host.Host,
 	opts := []libp2p.Option{
 		listener,
 		libp2p.Identity(priv),
-		libp2p.DisableRelay(),
+		libp2p.EnableAutoRelay(),
+		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
+			return dht.New(context.Background(), h, dht.Mode(dht.ModeClient), dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...))
+		}),
 	}
 
 	if quic {

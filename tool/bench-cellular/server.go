@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -88,6 +89,13 @@ func server(host host.Host, quic, insecure bool) {
 			log.Printf("Write error during uploaded ack to %s: %v\n", remotePeerID, err)
 		}
 	})
+
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			fmt.Println(host.Addrs())
+		}
+	}()
 
 	select {}
 }
