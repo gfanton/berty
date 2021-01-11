@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 
 	golog "github.com/ipfs/go-log"
 )
@@ -19,6 +20,7 @@ func main() {
 	download := flag.Bool("download", false, "(client) download data from server")
 	size := flag.Int("size", 0, "(client) size of data to upload/download")
 	quic := flag.Bool("quic", false, "use QUIC instead of TCP")
+	autorelay := flag.Bool("autorelay", false, "use AutoRelay instead of Berty's hardcoded relays")
 	ip6 := flag.Bool("ip6", false, "use ipv6 instead of ipv4")
 	port := flag.Int("port", 0, "port to listen on (default: random)")
 	insecure := flag.Bool("insecure", false, "use an unencrypted connection")
@@ -28,21 +30,24 @@ func main() {
 	if *dest != "" && !*upload && !*download {
 		log.Print("client must pass -upload, -download or both\n\n")
 		flag.PrintDefaults()
+		os.Exit(1)
 	}
 	if *dest != "" && *size <= 0 {
-		log.Fatal("client must pass -size\n\n")
+		log.Print("client must pass -size\n\n")
 		flag.PrintDefaults()
+		os.Exit(2)
 	}
 	if *dest == "" && *reco {
-		log.Fatal("reco flag is for client only\n\n")
+		log.Print("reco flag is for client only\n\n")
 		flag.PrintDefaults()
+		os.Exit(3)
 	}
 
 	// TODO: display relevant logs only at debug level
 	golog.SetAllLoggers(golog.LevelDebug)
 	// golog.SetAllLoggers(golog.LevelError)
 
-	host, err := createBasicHost(*seed, *port, *insecure, *quic, *ip6)
+	host, err := createBasicHost(*seed, *port, *autorelay, *insecure, *quic, *ip6)
 	if err != nil {
 		log.Fatal(err)
 	}
