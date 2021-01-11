@@ -90,6 +90,7 @@ func server(host host.Host, quic, insecure bool) {
 		}
 	})
 
+	// TODO: remove this
 	go func() {
 		for {
 			time.Sleep(time.Second)

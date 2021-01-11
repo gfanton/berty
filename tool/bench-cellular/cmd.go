@@ -38,7 +38,9 @@ func main() {
 		flag.PrintDefaults()
 	}
 
+	// TODO: display relevant logs only at debug level
 	golog.SetAllLoggers(golog.LevelDebug)
+	// golog.SetAllLoggers(golog.LevelError)
 
 	host, err := createBasicHost(*seed, *port, *insecure, *quic, *ip6)
 	if err != nil {
