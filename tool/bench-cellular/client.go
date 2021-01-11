@@ -11,32 +11,42 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	peer "github.com/libp2p/go-libp2p-peer"
-	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func client(host host.Host, dest string, size int, reco, upload, download bool) {
+func client(host host.Host, pid string, size int, reco, upload, download bool) {
 	log.Println("Local peerID:", host.ID().Pretty())
 
-	ipfsaddr, err := ma.NewMultiaddr(dest)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	// ipfsaddr, err := ma.NewMultiaddr(dest)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
 
-	pid, err := ipfsaddr.ValueForProtocol(ma.P_IPFS)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	// pid, err := ipfsaddr.ValueForProtocol(ma.P_IPFS)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
 
 	peerid, err := peer.IDB58Decode(pid)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", pid))
-	targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
-	host.Peerstore().AddAddr(peerid, targetAddr, peerstore.PermanentAddrTTL)
+	relays := loadRelaysAddrs()
+
+	// /ip4/51.75.127.200/udp/4141/quic/p2p/12D3KooWPwRwwKatdy5yzRVCYPHib3fntYgbFB4nqrJPHWAqXD7z/p2p-circuit
+	targetAddr := ma.StringCast(fmt.Sprintf("/p2p-circuit/p2p/%s", peerid.String()))
+	for _, pi := range relays {
+		for _, addr := range pi.Addrs {
+			maddr := ma.StringCast(fmt.Sprintf("%s/p2p/%s", addr.String(), pi.ID.String()))
+			targetRelay := maddr.Encapsulate(targetAddr)
+			log.Printf("added relay target: %s", targetRelay.String())
+			host.Peerstore().AddAddr(peerid, targetRelay, peerstore.PermanentAddrTTL)
+
+		}
+	}
 
 	var start time.Time
 	for {

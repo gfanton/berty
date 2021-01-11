@@ -4,8 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
-
-	golog "github.com/ipfs/go-log"
+	// golog "github.com/ipfs/go-log"
 )
 
 const (
@@ -44,7 +43,7 @@ func main() {
 	}
 
 	// TODO: display relevant logs only at debug level
-	golog.SetAllLoggers(golog.LevelDebug)
+	// golog.SetAllLoggers(golog.LevelDebug)
 	// golog.SetAllLoggers(golog.LevelError)
 
 	host, err := createBasicHost(*seed, *port, *autorelay, *insecure, *quic, *ip6)

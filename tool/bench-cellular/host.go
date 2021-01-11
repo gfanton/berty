@@ -12,19 +12,40 @@ import (
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	quict "github.com/libp2p/go-libp2p-quic-transport"
-	routing "github.com/libp2p/go-libp2p-routing"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 var bertyRelays = []string{
 	"/ip4/51.159.21.214/udp/4040/quic/p2p/QmdT7AmhhnbuwvCpa5PH1ySK9HJVB82jr3fo1bxMxBPW6p",
 	"/ip4/51.15.25.224/udp/4040/quic/p2p/12D3KooWHhDBv6DJJ4XDWjzEXq6sVNEs6VuxsV1WyBBEhPENHzcZ",
-	"/ip4/51.75.127.200/udp/4141/quic/p2p/12D3KooWPwRwwKatdy5yzRVCYPHib3fntYgbFB4nqrJPHWAqXD7z",
+	// "/ip4/51.75.127.200/udp/4141/quic/p2p/12D3KooWPwRwwKatdy5yzRVCYPHib3fntYgbFB4nqrJPHWAqXD7z",
+}
+
+func loadRelaysAddrs() []*peer.AddrInfo {
+	addrs := make([]*peer.AddrInfo, len(bertyRelays))
+	for i, addr := range bertyRelays {
+		a, err := ma.NewMultiaddr(addr)
+		if err != nil {
+			log.Printf("error: can't parse Multiaddr: %s: %v\n", addr, err)
+			continue
+		}
+
+		pi, err := peer.AddrInfoFromP2pAddr(a)
+		if err != nil {
+			log.Printf("error: can't parse AddrInfo: %v\n", err)
+			continue
+		}
+		addrs[i] = pi
+	}
+
+	return addrs
 }
 
 func createBasicHost(seed int64, port int, autorelay, insecure, quic, ip6 bool) (host.Host, error) {
+	ctx := context.Background()
+
 	var r io.Reader
 	if seed == 0 {
 		r = rand.Reader
@@ -36,6 +57,8 @@ func createBasicHost(seed int64, port int, autorelay, insecure, quic, ip6 bool) 
 	if err != nil {
 		return nil, err
 	}
+
+	relays := loadRelaysAddrs()
 
 	var listener libp2p.Option
 	if ip6 {
@@ -61,29 +84,21 @@ func createBasicHost(seed int64, port int, autorelay, insecure, quic, ip6 bool) 
 		opts = append(
 			opts,
 			libp2p.EnableAutoRelay(),
-			libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
-				return dht.New(context.Background(), h, dht.Mode(dht.ModeClient), dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...))
-			}),
+			// libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
+			// 	return dht.New(context.Background(), h, dht.Mode(dht.ModeClient), dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...))
+			// }),
 		)
-	} else {
+
 		var staticRelays []peer.AddrInfo
 
-		for _, addr := range bertyRelays {
-			a, err := ma.NewMultiaddr(addr)
-			if err != nil {
-				log.Printf("error: can't parse Multiaddr: %s: %v\n", addr, err)
-				continue
-			}
-			pi, err := peer.AddrInfoFromP2pAddr(a)
-			if err != nil {
-				log.Printf("error: can't parse AddrInfo: %v\n", err)
-				continue
-			}
+		for _, pi := range relays {
 			staticRelays = append(staticRelays, *pi)
 			log.Printf("ADDED %v\n", *pi)
 		}
 
-		opts = append(opts, libp2p.EnableRelay(), libp2p.StaticRelays(staticRelays))
+		opts = append(opts, libp2p.EnableRelay(), libp2p.EnableAutoRelay(), libp2p.StaticRelays(staticRelays))
+	} else {
+		opts = append(opts, libp2p.EnableRelay())
 	}
 
 	if quic {
@@ -94,5 +109,21 @@ func createBasicHost(seed int64, port int, autorelay, insecure, quic, ip6 bool) 
 		opts = append(opts, libp2p.NoSecurity)
 	}
 
-	return libp2p.New(context.Background(), opts...)
+	h, err := libp2p.New(context.Background(), opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pi := range relays {
+		h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.PermanentAddrTTL)
+
+		log.Printf("CONNECTING TO RELAY: %v\n", *pi)
+		if err := h.Connect(ctx, *pi); err != nil {
+			return nil, fmt.Errorf("unalbe to connect to relay addr")
+		}
+
+		log.Printf("CONNECTED TO RELAY: %v\n", *pi)
+	}
+
+	return h, nil
 }
