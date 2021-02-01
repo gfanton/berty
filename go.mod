@@ -92,6 +92,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tailscale/depaware v0.0.0-20201214215404-77d1e9757027
 	github.com/tj/assert v0.0.3
+	github.com/xtaci/kcp-go/v5 v5.6.1
 	github.com/zcalusic/sysinfo v0.0.0-20200820110305-ef1bb2697bc2
 	go.opencensus.io v0.22.5 // indirect
 	go.opentelemetry.io/otel v0.8.0
