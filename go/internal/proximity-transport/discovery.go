@@ -9,6 +9,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// FIXME: the handshake and peer discovery should be made kcp
+// peerid should be discover by libp2p
+
 // HandleFoundPeer is called by the native driver when a new peer is found.
 // Adds the peer in the PeerStore and initiates a connection with it
 func (t *ProximityTransport) HandleFoundPeer(sRemotePID string) bool {
@@ -26,32 +29,32 @@ func (t *ProximityTransport) HandleFoundPeer(sRemotePID string) bool {
 	}
 
 	// Checks if a listener is currently running.
-	t.lock.RLock()
+	// t.lock.RLock()
 
-	if t.listener == nil || t.listener.ctx.Err() != nil {
-		t.lock.RUnlock()
-		t.logger.Error("HandleFoundPeer: listener not running")
-		return false
-	}
+	// if t.listener == nil || t.listener.ctx.Err() != nil {
+	// 	t.lock.RUnlock()
+	// 	t.logger.Error("HandleFoundPeer: listener not running")
+	// 	return false
+	// }
 
-	// Get snapshot of listener
-	listener := t.listener
+	// // Get snapshot of listener
+	// listener := t.listener
 
-	// unblock here to prevent blocking other APIs of Listener or Transport
-	t.lock.RUnlock()
+	// // unblock here to prevent blocking other APIs of Listener or Transport
+	// t.lock.RUnlock()
 
 	// Adds peer to peerstore.
 	t.host.Peerstore().AddAddr(remotePID, remoteMa,
 		pstore.TempAddrTTL)
 
 	// Peer with lexicographical smallest peerID inits libp2p connection.
-	if listener.Addr().String() < sRemotePID {
+	if t.host.ID().String() < sRemotePID {
 		t.logger.Debug("HandleFoundPeer: outgoing libp2p connection")
 		// Async connect so HandleFoundPeer can return and unlock the native driver.
 		// Needed to read and write during the connect handshake.
 		go func() {
 			// Need to use listener than t.listener here to not have to check valid value of t.listener
-			err := t.host.Connect(listener.ctx, peer.AddrInfo{
+			err := t.host.Connect(t.ctx, peer.AddrInfo{
 				ID:    remotePID,
 				Addrs: []ma.Multiaddr{remoteMa},
 			})
@@ -66,17 +69,7 @@ func (t *ProximityTransport) HandleFoundPeer(sRemotePID string) bool {
 	}
 
 	t.logger.Debug("HandleFoundPeer: incoming libp2p connection")
-	// Peer with lexicographical biggest peerID accepts incoming connection.
-	// FIXME : consider to push this code in go routine to prevent blocking native driver
-	select {
-	case listener.inboundConnReq <- connReq{
-		remoteMa:  remoteMa,
-		remotePID: remotePID,
-	}:
-		return true
-	case <-listener.ctx.Done():
-		return false
-	}
+	return true
 }
 
 // HandleLostPeer is called by the native driver when the connection with the peer is lost.
