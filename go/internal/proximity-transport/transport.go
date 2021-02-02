@@ -28,7 +28,7 @@ type ProximityTransport struct {
 	host     host.Host
 	upgrader *tptu.Upgrader
 
-	laddr    ma.Multiaddr
+	lmaddr   ma.Multiaddr
 	pc       *PacketConn
 	listener *Listener
 	driver   NativeDriver
@@ -66,7 +66,7 @@ func NewTransport(ctx context.Context, l *zap.Logger, driver NativeDriver) func(
 			return nil, fmt.Errorf("unable to create tpt packet_conn: %w", err)
 		}
 		transport := &ProximityTransport{
-			laddr:    laddr,
+			lmaddr:   laddr,
 			pc:       pc,
 			host:     h,
 			upgrader: u,
@@ -82,7 +82,7 @@ func NewTransport(ctx context.Context, l *zap.Logger, driver NativeDriver) func(
 
 // Dial dials the peer at the remote address.
 // With proximity connections (e.g. MC, BLE, Nearby) you can only dial a device that is already connected with the native driver.
-func (t *ProximityTransport) Dial(ctx context.Context, remoteMa ma.Multiaddr, remotePID peer.ID) (tpt.CapableConn, error) {
+func (t *ProximityTransport) Dial(ctx context.Context, rmaddr ma.Multiaddr, rpid peer.ID) (tpt.CapableConn, error) {
 	// ProximityTransport needs to have a running listener in order to dial other peer
 	// because native driver is initialized during listener creation.
 	// t.lock.RLock()
@@ -112,17 +112,18 @@ func (t *ProximityTransport) Dial(ctx context.Context, remoteMa ma.Multiaddr, re
 	// Returns an outbound conn.
 	// return  newConn(ctx, t, remoteMa, remotePID, false)
 
-	raddr, err := manet.ToNetAddr(remoteMa)
+	raddr, err := manet.ToNetAddr(rmaddr)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = kcp.NewConn2(raddr, BlockCrypt_TODO, DataNShard_TODO, ParityShard_TODO, t.pc)
+	usess, err := kcp.NewConn2(raddr, BlockCrypt_TODO, DataNShard_TODO, ParityShard_TODO, t.pc)
 	if err != nil {
 		return nil, err
 	}
 
-	return nil, nil
+	mc := NewConn(usess, t.lmaddr, rmaddr)
+	return t.upgrader.UpgradeOutbound(ctx, t, mc, rpid)
 }
 
 // CanDial returns true if this transport believes it can dial the given
