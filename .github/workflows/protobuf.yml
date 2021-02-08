@@ -140,7 +140,7 @@ jobs:
         working-directory: js
 
       - name: Cache Node.js modules
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.4
         with:
           path: js/node_modules
           key: ${{ runner.OS }}-genjs-v2-${{ hashFiles('js/yarn.lock') }}

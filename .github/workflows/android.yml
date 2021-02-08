@@ -45,21 +45,21 @@ jobs:
           node-version: 14.x
 
       - name: Cache Go modules
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-
 
       - name: Cache Node modules
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.4
         with:
           path: js/node_modules
           key: ${{ runner.OS }}-node-v4-${{ hashFiles('js/yarn.lock') }}
           restore-keys: ${{ runner.OS }}-node-v4-
 
       - name: Cache Gomobile .aar
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.4
         with:
           path: js/android/libs/gobridge.aar
           key: android-gomobile-${{ hashFiles('go/**/*.go', 'go.sum') }}
