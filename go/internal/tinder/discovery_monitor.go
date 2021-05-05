@@ -94,10 +94,15 @@ func (d *discoveryMonitor) BackoffConnectorLog(p p2p_peer.AddrInfo) {
 			d.logger.Warn("tinder unable to connect", zap.String("peerID", p.ID.Pretty()), zap.Any("addrs", p.Addrs), zap.Error(err))
 		}
 
-		d.host.Network().Connectedness(p.ID)
+		connectedness = d.host.Network().Connectedness(p.ID)
 	}
 
-	d.logger.Debug("tinder connected!", zap.String("peerID", p.ID.Pretty()))
+	conns := d.host.Network().ConnsToPeer(p.ID)
+	maddrs := make([]string, len(conns))
+	for i, conn := range conns {
+		maddrs[i] = conn.RemoteMultiaddr().String()
+	}
+	d.logger.Debug("tinder connected!", zap.String("peerID", p.ID.Pretty()), zap.Strings("addrs", maddrs))
 
 	d.muConnMonitor.Lock()
 	delete(d.connMonitor, p.ID)
