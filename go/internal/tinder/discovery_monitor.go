@@ -86,17 +86,18 @@ func (d *discoveryMonitor) BackoffConnectorLog(p p2p_peer.AddrInfo) {
 	connectedness := d.host.Network().Connectedness(p.ID)
 
 	for connectedness != network.Connected {
+		time.Sleep(time.Second * 2)
+
 		d.logger.Debug("tinder connecting", zap.String("peerID", p.ID.Pretty()), zap.Any("addrs", p.Addrs))
 
 		if err := d.host.Connect(context.Background(), p); err != nil {
 			d.logger.Warn("tinder unable to connect", zap.String("peerID", p.ID.Pretty()), zap.Any("addrs", p.Addrs), zap.Error(err))
-		} else {
-			d.logger.Debug("tinder connected!", zap.String("peerID", p.ID.Pretty()))
 		}
 
 		d.host.Network().Connectedness(p.ID)
-		time.Sleep(time.Second * 2)
 	}
+
+	d.logger.Debug("tinder connected!", zap.String("peerID", p.ID.Pretty()))
 
 	d.muConnMonitor.Lock()
 	delete(d.connMonitor, p.ID)
