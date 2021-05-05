@@ -52,10 +52,11 @@ func (d *discoveryMonitor) FindPeers(ctx context.Context, ns string, opts ...p2p
 	go func() {
 		for p := range c {
 			d.muConnMonitor.Lock()
-			if _, ok := d.connMonitor[p.ID]; !ok {
+			if _, ok := d.connMonitor[p.ID]; ok {
 				d.muConnMonitor.Unlock()
 				continue
 			}
+
 			d.connMonitor[p.ID] = struct{}{}
 			d.muConnMonitor.Unlock()
 
