@@ -126,7 +126,7 @@ func NewService(opts *Opts, h host.Host, drivers ...*Driver) (Service, error) {
 	if opts.EnableDiscoveryMonitor {
 		disc = &discoveryMonitor{
 			host:    h,
-			logger:  opts.Logger,
+			logger:  opts.Logger.Named("monitor"),
 			disc:    disc,
 			emitter: emitter,
 		}

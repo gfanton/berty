@@ -2,11 +2,13 @@ package tinder
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	p2p_discovery "github.com/libp2p/go-libp2p-core/discovery"
 	p2p_event "github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
 	"go.uber.org/zap"
 )
@@ -17,6 +19,9 @@ type discoveryMonitor struct {
 	logger  *zap.Logger
 	disc    p2p_discovery.Discovery
 	emitter p2p_event.Emitter
+
+	muConnMonitor sync.Mutex
+	connMonitor   map[p2p_peer.ID]struct{}
 }
 
 // Advertise advertises a service
@@ -52,6 +57,13 @@ func (d *discoveryMonitor) FindPeers(ctx context.Context, ns string, opts ...p2p
 				Topic:     ns,
 			})
 			retc <- p
+
+			d.muConnMonitor.Lock()
+			if _, ok := d.connMonitor[p.ID]; ok {
+				go d.BackoffConnectorLog(p)
+				d.connMonitor[p.ID] = struct{}{}
+			}
+			d.muConnMonitor.Unlock()
 		}
 
 		close(retc)
@@ -64,4 +76,26 @@ func (d *discoveryMonitor) Emit(evt *EvtDriverMonitor) {
 	if err := d.emitter.Emit(*evt); err != nil {
 		d.logger.Warn("unable to emit `EvtDriverMonitor`", zap.Error(err))
 	}
+}
+
+func (d *discoveryMonitor) BackoffConnectorLog(p p2p_peer.AddrInfo) {
+	connectedness := d.host.Network().Connectedness(p.ID)
+
+	for connectedness != network.Connected {
+		d.logger.Debug("tinder connecting", zap.String("peerID", p.ID.Pretty()), zap.Any("addrs", p.Addrs))
+
+		if err := d.host.Connect(context.Background(), p); err != nil {
+			d.logger.Warn("tinder unable to connect", zap.String("peerID", p.ID.Pretty()), zap.Any("addrs", p.Addrs), zap.Error(err))
+		} else {
+			d.logger.Debug("tinder connected!", zap.String("peerID", p.ID.Pretty()))
+		}
+
+		d.host.Network().Connectedness(p.ID)
+		time.Sleep(time.Second * 2)
+	}
+
+	d.muConnMonitor.Lock()
+	delete(d.connMonitor, p.ID)
+	d.muConnMonitor.Unlock()
+
 }

@@ -479,7 +479,7 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 
 				name := fmt.Sprintf("rdvp#%.6s", peer.ID)
 				drivers = append(drivers,
-					tinder.NewDriverFromUnregisterDiscovery(name, udisc, tinder.NoFilter))
+					tinder.NewDriverFromUnregisterDiscovery(name, udisc, tinder.FilterPublicAddrs))
 			}
 		}
 	}
@@ -488,7 +488,7 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 	if m.Node.Protocol.TinderDHTDriver {
 		// dht driver
 		drivers = append(drivers,
-			tinder.NewDriverFromRouting("dht", r, nil))
+			tinder.NewDriverFromRouting("dht", r, tinder.FilterPublicAddrs))
 	}
 
 	// localdisc driver
@@ -509,9 +509,10 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 
 	tinderOpts := &tinder.Opts{
 		Logger:                 logger,
+		EnableDiscoveryMonitor: true,
 		AdvertiseResetInterval: time.Minute * 10,
 		AdvertiseGracePeriod:   time.Minute * 5,
-		FindPeerResetInterval:  time.Minute * 5,
+		FindPeerResetInterval:  time.Minute,
 		BackoffStrategy: &tinder.BackoffOpts{
 			StratFactory: backoffstrat,
 		},
