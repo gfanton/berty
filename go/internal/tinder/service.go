@@ -125,10 +125,11 @@ func NewService(opts *Opts, h host.Host, drivers ...*Driver) (Service, error) {
 	// enable monitor if needed
 	if opts.EnableDiscoveryMonitor {
 		disc = &discoveryMonitor{
-			host:    h,
-			logger:  opts.Logger.Named("monitor"),
-			disc:    disc,
-			emitter: emitter,
+			host:        h,
+			logger:      opts.Logger.Named("monitor"),
+			disc:        disc,
+			emitter:     emitter,
+			connMonitor: make(map[p2p_peer.ID]struct{}),
 		}
 	}
 	return &service{
