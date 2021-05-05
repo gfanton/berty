@@ -51,19 +51,23 @@ func (d *discoveryMonitor) FindPeers(ctx context.Context, ns string, opts ...p2p
 	retc := make(chan p2p_peer.AddrInfo)
 	go func() {
 		for p := range c {
+			d.muConnMonitor.Lock()
+			if _, ok := d.connMonitor[p.ID]; !ok {
+				d.muConnMonitor.Unlock()
+				continue
+			}
+			d.connMonitor[p.ID] = struct{}{}
+			d.muConnMonitor.Unlock()
+
+			go d.BackoffConnectorLog(p)
+
 			d.Emit(&EvtDriverMonitor{
 				EventType: TypeEventMonitorFoundPeer,
 				AddrInfo:  p,
 				Topic:     ns,
 			})
-			retc <- p
 
-			d.muConnMonitor.Lock()
-			if _, ok := d.connMonitor[p.ID]; ok {
-				go d.BackoffConnectorLog(p)
-				d.connMonitor[p.ID] = struct{}{}
-			}
-			d.muConnMonitor.Unlock()
+			retc <- p
 		}
 
 		close(retc)
