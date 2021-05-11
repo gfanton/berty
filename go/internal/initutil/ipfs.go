@@ -419,19 +419,19 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 	// enable autorelay
 	p2popts = append(p2popts, libp2p.ListenAddrs(), libp2p.EnableAutoRelay(), libp2p.ForceReachabilityPrivate())
 
-	pis, err := m.getStaticRelays()
-	if err != nil {
-		return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
-	}
+	// pis, err := m.getStaticRelays()
+	// if err != nil {
+	// 	return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
+	// }
 
-	if len(pis) > 0 {
-		peers := make([]peer.AddrInfo, len(pis))
-		for i, p := range pis {
-			peers[i] = *p
-		}
+	// if len(pis) > 0 {
+	// 	peers := make([]peer.AddrInfo, len(pis))
+	// 	for i, p := range pis {
+	// 		peers[i] = *p
+	// 	}
 
-		p2popts = append(p2popts, libp2p.StaticRelays(peers))
-	}
+	// 	p2popts = append(p2popts, libp2p.StaticRelays(peers))
+	// }
 
 	// prefill peerstore with known rdvp servers
 	if m.Node.Protocol.Tor.Mode != TorRequired {
@@ -444,6 +444,8 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 }
 
 func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
+	ctx := m.getContext()
+
 	logger, err := m.getLogger()
 	if err != nil {
 		return errcode.ErrIPFSSetupHost.Wrap(err)
@@ -479,7 +481,7 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 
 				name := fmt.Sprintf("rdvp#%.6s", peer.ID)
 				drivers = append(drivers,
-					tinder.NewDriverFromUnregisterDiscovery(name, udisc, tinder.NoFilter))
+					tinder.NewDriverFromUnregisterDiscovery(name, udisc, tinder.FilterPublicAddrs))
 			}
 		}
 	}
@@ -490,6 +492,23 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 		drivers = append(drivers,
 			tinder.NewDriverFromRouting("dht", r, nil))
 	}
+	relays, err := m.getStaticRelays()
+	if err != nil {
+		return errcode.ErrIPFSSetupHost.Wrap(err)
+	}
+
+	auto, err := ipfsutil.NewAutoRelayV2(h, &ipfsutil.AutoRelayV2Opts{
+		Logger:       logger.Named("autorelayv2"),
+		StaticRelays: relays,
+	})
+	if err != nil {
+		return errcode.ErrIPFSSetupHost.Wrap(err)
+	}
+
+	go func() {
+		<-ctx.Done()
+		auto.Close()
+	}()
 
 	// localdisc driver
 	// @TODO(gfanton): check if this is useful
@@ -587,7 +606,7 @@ func (m *Manager) getRdvpMaddrs() ([]*peer.AddrInfo, error) {
 	return ipfsutil.ParseAndResolveMaddrs(m.getContext(), m.initLogger, addrs)
 }
 
-func (m *Manager) getStaticRelays() ([]*peer.AddrInfo, error) {
+func (m *Manager) getStaticRelays() ([]ma.Multiaddr, error) {
 	m.applyDefaults()
 
 	defaultMaddrs := config.Config.P2P.StaticRelays
@@ -604,7 +623,17 @@ func (m *Manager) getStaticRelays() ([]*peer.AddrInfo, error) {
 		}
 	}
 
-	return ipfsutil.ParseAndResolveMaddrs(m.getContext(), m.initLogger, addrs)
+	maddrs := make([]ma.Multiaddr, len(addrs))
+	for i, addr := range addrs {
+		maddr, err := ma.NewMultiaddr(addr)
+		if err != nil {
+			return nil, err
+		}
+
+		maddrs[i] = maddr
+	}
+
+	return maddrs, nil
 }
 
 func (m *Manager) getBootstrapAddrs() []string {

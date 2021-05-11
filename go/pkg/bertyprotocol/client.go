@@ -10,7 +10,7 @@ import (
 	"berty.tech/berty/v2/go/pkg/protocoltypes"
 )
 
-const ClientBufferSize = 256 * 1024
+const ClientBufferSize = 10 * 1024 * 1024 // 10mb
 
 type Client interface {
 	protocoltypes.ProtocolServiceClient
