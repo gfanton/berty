@@ -26,6 +26,7 @@ import (
 	"berty.tech/berty/v2/go/pkg/errcode"
 	"berty.tech/berty/v2/go/pkg/messengertypes"
 	"berty.tech/berty/v2/go/pkg/protocoltypes"
+	"berty.tech/berty/v2/go/pkg/tyber"
 	"berty.tech/berty/v2/go/pkg/username"
 )
 
@@ -202,7 +203,10 @@ func (svc *service) ShareableBertyGroup(ctx context.Context, req *messengertypes
 }
 
 // maybe we should preserve the previous generic api
-func (svc *service) SendContactRequest(ctx context.Context, req *messengertypes.SendContactRequest_Request) (*messengertypes.SendContactRequest_Reply, error) {
+func (svc *service) SendContactRequest(ctx context.Context, req *messengertypes.SendContactRequest_Request) (_ *messengertypes.SendContactRequest_Reply, err error) {
+	ctx, _, endSection := tyber.Section(ctx, svc.logger, "Sending contact request")
+	defer func() { endSection(err, "") }()
+
 	if req == nil || req.BertyID == nil || req.BertyID.AccountPK == nil || req.BertyID.PublicRendezvousSeed == nil {
 		return nil, errcode.ErrMissingInput
 	}
@@ -218,8 +222,7 @@ func (svc *service) SendContactRequest(ctx context.Context, req *messengertypes.
 		},
 		OwnMetadata: req.OwnMetadata,
 	}
-	_, err := svc.protocolClient.ContactRequestSend(ctx, &contactRequest)
-	if err != nil {
+	if _, err := svc.protocolClient.ContactRequestSend(ctx, &contactRequest); err != nil {
 		return nil, errcode.TODO.Wrap(err)
 	}
 
@@ -611,7 +614,10 @@ func (svc *service) EventStream(req *messengertypes.EventStream_Request, sub mes
 	}
 }
 
-func (svc *service) ConversationCreate(ctx context.Context, req *messengertypes.ConversationCreate_Request) (*messengertypes.ConversationCreate_Reply, error) {
+func (svc *service) ConversationCreate(ctx context.Context, req *messengertypes.ConversationCreate_Request) (_ *messengertypes.ConversationCreate_Reply, err error) {
+	ctx, _, endSection := tyber.Section(ctx, svc.logger, "Creating conversation")
+	defer func() { endSection(err, "") }()
+
 	svc.handlerMutex.Lock()
 	defer svc.handlerMutex.Unlock()
 
@@ -695,7 +701,7 @@ func (svc *service) ConversationCreate(ctx context.Context, req *messengertypes.
 	** It would make sense to offer it as an option for privacy sensitive groups of small sizes though
 	** In the case that the group invitation leaks after an user leaves it, this user's name will be inaccessible to new users joining the group
 	 */
-	if err := svc.sendAccountUserInfo(pkStr); err != nil {
+	if err := svc.sendAccountUserInfo(ctx, pkStr); err != nil {
 		svc.logger.Error("failed to set creator username in group", zap.Error(err))
 	}
 
@@ -792,7 +798,7 @@ func (svc *service) ConversationJoin(ctx context.Context, req *messengertypes.Co
 
 	// Try to put user name in group metadata 3 times
 	for i := 0; i < 3; i++ {
-		if err := svc.sendAccountUserInfo(conv.PublicKey); err != nil {
+		if err := svc.sendAccountUserInfo(ctx, conv.PublicKey); err != nil {
 			svc.logger.Error("failed to set username in group", zap.Error(err))
 		}
 	}
@@ -814,7 +820,10 @@ func ensureValidBase64CID(str string) error {
 	return nil
 }
 
-func (svc *service) AccountUpdate(ctx context.Context, req *messengertypes.AccountUpdate_Request) (*messengertypes.AccountUpdate_Reply, error) {
+func (svc *service) AccountUpdate(ctx context.Context, req *messengertypes.AccountUpdate_Request) (_ *messengertypes.AccountUpdate_Reply, err error) {
+	ctx, _, endSection := tyber.Section(ctx, svc.logger, "Updating account")
+	defer func() { endSection(err, "") }()
+
 	svc.handlerMutex.Lock()
 	defer svc.handlerMutex.Unlock()
 
@@ -827,7 +836,7 @@ func (svc *service) AccountUpdate(ctx context.Context, req *messengertypes.Accou
 		}
 	}
 
-	err := svc.db.tx(func(tx *dbWrapper) error {
+	if err := svc.db.tx(ctx, func(tx *dbWrapper) error {
 		acc, err := tx.getAccount()
 		if err != nil {
 			svc.logger.Error("AccountUpdate: failed to get account", zap.Error(err))
@@ -869,8 +878,7 @@ func (svc *service) AccountUpdate(ctx context.Context, req *messengertypes.Accou
 		}
 
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -879,7 +887,7 @@ func (svc *service) AccountUpdate(ctx context.Context, req *messengertypes.Accou
 		svc.logger.Error("AccountUpdate: get conversations", zap.Error(err))
 	} else {
 		for _, conv := range convos {
-			if err := svc.sendAccountUserInfo(conv.GetPublicKey()); err != nil {
+			if err := svc.sendAccountUserInfo(ctx, conv.GetPublicKey()); err != nil {
 				svc.logger.Error("AccountUpdate: send user info", zap.Error(err))
 			}
 		}
@@ -889,7 +897,10 @@ func (svc *service) AccountUpdate(ctx context.Context, req *messengertypes.Accou
 	return &messengertypes.AccountUpdate_Reply{}, err
 }
 
-func (svc *service) ContactRequest(ctx context.Context, req *messengertypes.ContactRequest_Request) (*messengertypes.ContactRequest_Reply, error) {
+func (svc *service) ContactRequest(ctx context.Context, req *messengertypes.ContactRequest_Request) (response *messengertypes.ContactRequest_Reply, err error) {
+	ctx, _, endSection := tyber.Section(ctx, svc.logger, fmt.Sprintf("Sending contact request to %s", req.Link))
+	defer func() { endSection(err, "") }()
+
 	link, err := bertylinks.UnmarshalLink(req.GetLink(), req.Passphrase)
 	if err != nil {
 		return nil, errcode.ErrMessengerInvalidDeepLink.Wrap(err)
@@ -900,6 +911,17 @@ func (svc *service) ContactRequest(ctx context.Context, req *messengertypes.Cont
 	if !link.IsContact() {
 		return nil, errcode.ErrMessengerInvalidDeepLink.Wrap(err)
 	}
+
+	contactDisplayName := link.GetBertyID().GetDisplayName()
+	contactPK := b64EncodeBytes(link.GetBertyID().GetAccountPK())
+
+	svc.logger.Debug("Validated contact link", tyber.FormatStepLogFields(ctx, []tyber.Detail{
+		{Name: "ContactDisplayName", Description: contactDisplayName},
+		{Name: "ContactPublicKey", Description: contactPK},
+		{Name: "ContactPublicRendezvousSeed", Description: b64EncodeBytes(link.GetBertyID().GetPublicRendezvousSeed())},
+	}, tyber.UpdateTraceName(fmt.Sprintf("Sending contact request to \"%s\" (%s)", contactDisplayName, contactPK)))...)
+
+	// https://berty.tech/id#contact/oZBLEsB8LoAoDdx2dpKcmBk3y2RRZhPgmxt725CQRGMcWsnVYiQx8Fdf2ExMfYHE1QVQjKb6BwLMn2GkX1vU8DyXXg3Pr5W/name=TestUser
 
 	svc.handlerMutex.Lock()
 	defer svc.handlerMutex.Unlock()
@@ -913,7 +935,7 @@ func (svc *service) ContactRequest(ctx context.Context, req *messengertypes.Cont
 		return nil, errcode.ErrInternal.Wrap(err)
 	}
 
-	m, err := proto.Marshal(&messengertypes.ContactMetadata{DisplayName: link.BertyID.GetDisplayName()})
+	m, err := proto.Marshal(&messengertypes.ContactMetadata{DisplayName: contactDisplayName})
 	if err != nil {
 		return nil, errcode.ErrInternal.Wrap(err)
 	}
@@ -936,7 +958,10 @@ func (svc *service) ContactRequest(ctx context.Context, req *messengertypes.Cont
 	return &messengertypes.ContactRequest_Reply{}, nil
 }
 
-func (svc *service) ContactAccept(ctx context.Context, req *messengertypes.ContactAccept_Request) (*messengertypes.ContactAccept_Reply, error) {
+func (svc *service) ContactAccept(ctx context.Context, req *messengertypes.ContactAccept_Request) (_ *messengertypes.ContactAccept_Reply, err error) {
+	ctx, _, endSection := tyber.Section(ctx, svc.logger, fmt.Sprintf("Accepting contact request from %s", req.GetPublicKey()))
+	defer func() { endSection(err, "") }()
+
 	pk := req.GetPublicKey()
 	if pk == "" {
 		return nil, errcode.ErrInvalidInput.Wrap(fmt.Errorf("no public key supplied"))
@@ -971,25 +996,34 @@ func (svc *service) ContactAccept(ctx context.Context, req *messengertypes.Conta
 	return &messengertypes.ContactAccept_Reply{}, nil
 }
 
-func (svc *service) Interact(ctx context.Context, req *messengertypes.Interact_Request) (*messengertypes.Interact_Reply, error) {
+func (svc *service) Interact(ctx context.Context, req *messengertypes.Interact_Request) (_ *messengertypes.Interact_Reply, err error) {
 	gpk := req.GetConversationPublicKey()
+	payloadType := req.GetType()
+
+	ctx, newTrace, endSection := tyber.Section(ctx, svc.logger, fmt.Sprintf("Interacting with %s on group %s", strings.TrimPrefix(payloadType.String(), "Type"), gpk))
+	defer func() {
+		if err != nil {
+			endSection(err, "")
+		}
+	}()
+
 	if gpk == "" {
 		return nil, errcode.ErrMissingInput
 	}
 
-	svc.logger.Info("interacting", zap.String("public-key", gpk))
 	gpkb, err := b64DecodeBytes(gpk)
 	if err != nil {
 		return nil, errcode.ErrInvalidInput.Wrap(err)
 	}
 
 	payload, err := (&messengertypes.AppMessage{
-		Type:    req.GetType(),
+		Type:    payloadType,
 		Payload: req.GetPayload(),
 	}).UnmarshalPayload()
 	if err != nil {
 		return nil, errcode.ErrInvalidInput.Wrap(err)
 	}
+	tyber.LogStep(ctx, svc.logger, "Unmarshaled payload", tyber.WithJSONDetail("AppMessagePayload", payload))
 
 	svc.handlerMutex.Lock()
 	defer svc.handlerMutex.Unlock()
@@ -1009,14 +1043,29 @@ func (svc *service) Interact(ctx context.Context, req *messengertypes.Interact_R
 			return nil, errcode.ErrDeserialization.Wrap(err)
 		}
 	}
+
 	reply, err := svc.protocolClient.AppMessageSend(ctx, &protocoltypes.AppMessageSend_Request{GroupPK: gpkb, Payload: fp, AttachmentCIDs: cids})
 	if err != nil {
-		return nil, err
+		return nil, errcode.ErrProtocolSend.Wrap(err)
 	}
 	cid, err := ipfscid.Cast(reply.GetCID())
 	if err != nil {
 		return nil, errcode.ErrDeserialization.Wrap(err)
 	}
+
+	if payloadType == messengertypes.AppMessage_TypeUserMessage {
+		muts := []tyber.StepMutator{}
+		if newTrace {
+			muts = append(muts, tyber.EndTrace)
+		}
+		tyber.LogStep(ctx, svc.logger, "Waiting for an Acknowledge", tyber.WithDetail("TargetCID", cid.String()))
+		svc.logger.Debug("Subscribing to acks", tyber.FormatSubscribeLogFields(ctx, tyber.WKENAcknowledgeReceived, []tyber.Detail{
+			{Name: "TargetCID", Description: cid.String()},
+		}, muts...)...)
+	} else if newTrace {
+		tyber.LogTraceEnd(ctx, svc.logger, "Interacted successfully", tyber.WithDetail("CID", cid.String()))
+	}
+
 	return &messengertypes.Interact_Reply{CID: cid.String()}, nil
 }
 
@@ -1285,7 +1334,10 @@ func (svc *service) InstanceExportData(_ *messengertypes.InstanceExportData_Requ
 	}
 }
 
-func (svc *service) MediaPrepare(srv messengertypes.MessengerService_MediaPrepareServer) error {
+func (svc *service) MediaPrepare(srv messengertypes.MessengerService_MediaPrepareServer) (err error) {
+	ctx, _, endSection := tyber.Section(srv.Context(), svc.logger, "Preparing media")
+	defer func() { endSection(err, "") }()
+
 	// read header
 	header, err := srv.Recv()
 	if err != nil {
@@ -1320,7 +1372,7 @@ func (svc *service) MediaPrepare(srv messengertypes.MessengerService_MediaPrepar
 	defer file.Close()
 
 	// upload media and get cid in return
-	cidBytes, err := svc.attachmentPrepare(file)
+	cidBytes, err := svc.attachmentPrepare(ctx, file)
 	if err != nil {
 		return errcode.ErrAttachmentPrepare.Wrap(err)
 	}
@@ -1329,7 +1381,7 @@ func (svc *service) MediaPrepare(srv messengertypes.MessengerService_MediaPrepar
 	svc.handlerMutex.Lock()
 	defer svc.handlerMutex.Unlock()
 
-	return svc.db.tx(func(tx *dbWrapper) error {
+	return svc.db.tx(ctx, func(tx *dbWrapper) error {
 		// add to db
 		media := *header.Info
 		media.CID = cid
@@ -1356,7 +1408,10 @@ func (svc *service) MediaPrepare(srv messengertypes.MessengerService_MediaPrepar
 	})
 }
 
-func (svc *service) MediaRetrieve(req *messengertypes.MediaRetrieve_Request, srv messengertypes.MessengerService_MediaRetrieveServer) error {
+func (svc *service) MediaRetrieve(req *messengertypes.MediaRetrieve_Request, srv messengertypes.MessengerService_MediaRetrieveServer) (err error) {
+	ctx, _, endSection := tyber.Section(srv.Context(), svc.logger, "Retrieving media")
+	defer func() { endSection(err, "") }()
+
 	var attachment *io.PipeReader
 	if err := func() error {
 		svc.handlerMutex.Lock()
@@ -1378,7 +1433,7 @@ func (svc *service) MediaRetrieve(req *messengertypes.MediaRetrieve_Request, srv
 		}
 
 		// open download
-		if attachment, err = svc.attachmentRetrieve(req.GetCid()); err != nil {
+		if attachment, err = svc.attachmentRetrieve(ctx, req.GetCid()); err != nil {
 			return errcode.ErrAttachmentRetrieve.Wrap(err)
 		}
 		return nil
