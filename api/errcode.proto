@@ -18,6 +18,7 @@ enum ErrCode {
 
   Undefined = 0; // default value, should never be set manually
 
+  ErrNotOperational = 555; // indicate that this method is (voluntary) not operational
   TODO = 666; // indicates that you plan to create an error later
   ErrNotImplemented = 777; // indicates that a method is not implemented yet
   ErrInternal = 888; // indicates an unknown error (without Code), i.e. in gRPC

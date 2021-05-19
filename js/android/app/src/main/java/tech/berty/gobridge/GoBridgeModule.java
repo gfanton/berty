@@ -103,6 +103,8 @@ public class GoBridgeModule extends ReactContextBaseJavaModule {
       LoggerDriver logger = new LoggerDriver("tech.berty", "protocol");
       config.setLoggerDriver(logger);
 
+      // config.useNoopAccountService()
+
       // set root dir
       Log.i(TAG, "root dir: " + this.rootDir.getAbsolutePath());
       config.setRootDir(this.rootDir.getAbsolutePath());

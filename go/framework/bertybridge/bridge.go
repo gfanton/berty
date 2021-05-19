@@ -146,8 +146,12 @@ func NewBridge(config *Config) (*Bridge, error) {
 		}
 
 		var err error
-		if b.serviceAccount, err = account_svc.NewService(&opts); err != nil {
-			return nil, err
+		if !config.noopservice {
+			if b.serviceAccount, err = account_svc.NewService(&opts); err != nil {
+				return nil, err
+			}
+		} else {
+			b.serviceAccount = account_svc.NewNoopService()
 		}
 	}
 

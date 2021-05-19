@@ -9,6 +9,7 @@ type Config struct {
 	nbDriver    NativeNBDriver
 	cliArgs     []string
 	rootDir     string
+	noopservice bool
 }
 
 func NewConfig() *Config {
@@ -22,3 +23,4 @@ func (c *Config) SetNBDriver(driver NativeNBDriver)               { c.nbDriver =
 func (c *Config) SetLifeCycleDriver(lc LifeCycleDriver)           { c.lc = lc }
 func (c *Config) SetRootDir(rootdir string)                       { c.rootDir = rootdir }
 func (c *Config) AppendCLIArg(arg string)                         { c.cliArgs = append(c.cliArgs, arg) }
+func (c *Config) UseNoopAccountService()                          { c.noopservice = true }
