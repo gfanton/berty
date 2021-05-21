@@ -1,6 +1,6 @@
 module berty.tech/berty/v2
 
-go 1.14
+go 1.15
 
 require (
 	bazil.org/fuse v0.0.0-20200524192727-fb710f7dfd05 // indirect
@@ -8,7 +8,7 @@ require (
 	berty.tech/go-libp2p-tor-transport v0.8.4
 	berty.tech/go-orbit-db v1.10.11
 	berty.tech/ipfs-webui-packed v1.0.0-v2.11.4-1
-	fyne.io/fyne/v2 v2.0.0
+	fyne.io/fyne/v2 v2.0.3
 	github.com/Masterminds/goutils v1.1.0 // indirect
 	github.com/Masterminds/semver v1.5.0
 	github.com/Masterminds/sprig v2.22.0+incompatible // indirect
@@ -24,18 +24,18 @@ require (
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/dgraph-io/badger v1.6.2
 	github.com/dgraph-io/ristretto v0.0.3 // indirect
-	github.com/eknkc/basex v1.0.0
+	github.com/eknkc/basex v1.0.1
 	github.com/fabiokung/shm v0.0.0-20150728212823-2852b0d79bae
-	github.com/fatih/color v1.10.0
+	github.com/fatih/color v1.11.0
 	github.com/gdamore/tcell v1.4.0
 	github.com/gen2brain/beeep v0.0.0-20200526185328-e9c15c258e28
 	github.com/githubnemo/CompileDaemon v1.2.1
 	github.com/gobuffalo/here v0.6.2 // indirect
 	github.com/gofrs/uuid v3.4.0+incompatible
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/protobuf v1.4.3
+	github.com/golang/protobuf v1.5.2
 	github.com/google/gopacket v1.1.19 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
@@ -49,12 +49,12 @@ require (
 	github.com/ipfs/go-ipfs-files v0.0.8
 	github.com/ipfs/go-ipfs-keystore v0.0.2
 	github.com/ipfs/go-ipld-cbor v0.0.5
-	github.com/ipfs/go-log/v2 v2.1.2
+	github.com/ipfs/go-log/v2 v2.1.3
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
 	github.com/itsTurnip/dishooks v0.0.0-20200206125049-b4fc7c7b042e
 	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
 	github.com/koron/go-ssdp v0.0.2 // indirect
-	github.com/kr/text v0.2.0 // indirect
+	github.com/kr/pretty v0.2.1
 	github.com/libp2p/go-libp2p v0.13.0
 	github.com/libp2p/go-libp2p-circuit v0.4.0
 	github.com/libp2p/go-libp2p-core v0.8.5
@@ -68,7 +68,7 @@ require (
 	github.com/libp2p/go-libp2p-transport-upgrader v0.4.0
 	github.com/libp2p/go-netroute v0.1.4 // indirect
 	github.com/markbates/pkger v0.17.1
-	github.com/mattn/go-sqlite3 v1.14.6
+	github.com/mattn/go-sqlite3 v1.14.7
 	github.com/mdomke/git-semver/v5 v5.0.0
 	github.com/mdp/qrterminal v1.0.1
 	github.com/mdp/qrterminal/v3 v3.0.0
@@ -77,15 +77,15 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-multiaddr v0.3.1
-	github.com/multiformats/go-multiaddr-dns v0.2.0
+	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
-	github.com/multiformats/go-multihash v0.0.14
+	github.com/multiformats/go-multihash v0.0.15
 	github.com/multiformats/go-multistream v0.2.1
 	github.com/oklog/run v1.1.0
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/peterbourgon/ff/v3 v3.0.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.9.0
+	github.com/prometheus/client_golang v1.10.0
 	github.com/pseudomuto/protoc-gen-doc v1.4.1
 	github.com/rivo/tview v0.0.0-20200712113419-c65badfc3d92
 	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0
@@ -98,30 +98,32 @@ require (
 	go.opentelemetry.io/otel v0.8.0
 	go.opentelemetry.io/otel/exporters/trace/jaeger v0.8.0
 	go.uber.org/goleak v1.1.10
-	go.uber.org/multierr v1.6.0
+	go.uber.org/multierr v1.7.0
 	go.uber.org/zap v1.16.0
-	golang.org/x/crypto v0.0.0-20201112155050-0c6587e931a9
-	golang.org/x/mobile v0.0.0-20200801112145-973feb4309de
-	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	golang.org/x/mobile v0.0.0-20210220033013-bdb1ca9a1e08
+	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
 	golang.org/x/text v0.3.4 // indirect
-	golang.org/x/tools v0.0.0-20210106214847-113979e3529a
+	golang.org/x/tools v0.1.1
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/genproto v0.0.0-20201022181438-0ff5f38871d5 // indirect
-	google.golang.org/grpc v1.36.0
+	google.golang.org/grpc v1.37.0
 	google.golang.org/grpc/examples v0.0.0-20200922230038-4e932bbcb079
+	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/square/go-jose.v2 v2.5.1
 	gorm.io/driver/sqlite v1.1.4
-	gorm.io/gorm v1.21.3
+	gorm.io/gorm v1.21.9
 	moul.io/godev v1.7.0
 	moul.io/openfiles v1.2.0
-	moul.io/progress v1.3.2
+	moul.io/progress v1.4.0
 	moul.io/srand v1.6.1
 	moul.io/testman v1.5.0
-	moul.io/u v1.20.0
+	moul.io/u v1.22.0
 	moul.io/zapconfig v1.3.0
 	moul.io/zapfilter v1.6.1
-	moul.io/zapgorm2 v1.0.1
-	mvdan.cc/gofumpt v0.0.0-20200802201014-ab5a8192947d
+	moul.io/zapgorm2 v1.1.0
+	moul.io/zapring v1.3.0
+	mvdan.cc/gofumpt v0.1.1
 	nhooyr.io/websocket v1.8.6 // indirect
 )
 
@@ -132,5 +134,5 @@ replace (
 	github.com/libp2p/go-libp2p-rendezvous => github.com/berty/go-libp2p-rendezvous v0.0.0-20201028141428-5b2e7e8ff19a // use berty fork of go-libp2p-rendezvous
 	github.com/libp2p/go-libp2p-swarm => github.com/Jorropo/go-libp2p-swarm v0.4.2 // temporary, see https://github.com/libp2p/go-libp2p-swarm/pull/227
 	github.com/peterbourgon/ff/v3 => github.com/moul/ff/v3 v3.0.1 // temporary, see https://github.com/peterbourgon/ff/pull/67, https://github.com/peterbourgon/ff/issues/68
-	golang.org/x/mobile => github.com/aeddi/mobile v0.0.1 // temporary, see https://github.com/golang/mobile/pull/58
+	golang.org/x/mobile => github.com/aeddi/mobile v0.0.2 // temporary, see https://github.com/golang/mobile/pull/58
 )
