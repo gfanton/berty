@@ -96,7 +96,7 @@
 		"@types/lodash": "^4.14.168",
 		"@types/react-native": "^0.63.46",
 		"@types/react-native-share": "^3.3.1",
-		"@types/react-test-renderer": "^16.9.4",
+		"@types/react-test-renderer": "^17.0.1",
 		"@typescript-eslint/eslint-plugin": "4.14.2",
 		"@typescript-eslint/parser": "4.14.2",
 		"babel-jest": "^26.6.3",
