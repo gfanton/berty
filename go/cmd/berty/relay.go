@@ -144,6 +144,7 @@ func relayServerCommand() *ffcli.Command {
 			if err != nil {
 				return err
 			}
+			defer h.Close()
 
 			addrs, err := peer.AddrInfoToP2pAddrs(&peer.AddrInfo{
 				ID:    h.ID(),
@@ -157,7 +158,6 @@ func relayServerCommand() *ffcli.Command {
 			for _, maddr := range addrs {
 				logger.Info("Host Addrs", zap.String("maddr", maddr.String()))
 			}
-			defer h.Close()
 
 			return manager.RunWorkers()
 		},

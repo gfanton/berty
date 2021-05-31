@@ -9,8 +9,10 @@ import (
 	mrand "math/rand"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-circuit/v2/relay"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	quict "github.com/libp2p/go-libp2p-quic-transport"
 	tcpt "github.com/libp2p/go-tcp-transport"
@@ -31,6 +33,7 @@ type globalOpts struct {
 	seed        int64
 	verbose     bool
 	veryVerbose bool
+	v2          bool
 }
 
 func globalOptsToLibp2pOpts(gOpts *globalOpts) ([]libp2p.Option, error) {
@@ -51,6 +54,8 @@ func globalOptsToLibp2pOpts(gOpts *globalOpts) ([]libp2p.Option, error) {
 	}
 	opts = append(opts, libp2p.Identity(priv))
 
+	opts = append(opts, libp2p.EnableRelay())
+
 	if gOpts.tcp {
 		opts = append(opts, libp2p.Transport(tcpt.NewTCPTransport))
 	} else {
@@ -59,6 +64,16 @@ func globalOptsToLibp2pOpts(gOpts *globalOpts) ([]libp2p.Option, error) {
 
 	if gOpts.insecure {
 		opts = append(opts, libp2p.NoSecurity)
+	}
+
+	if gOpts.v2 {
+		limit := relay.DefaultLimit()
+		limit.Duration = 10 * time.Minute
+
+		rc := relay.DefaultResources()
+		rc.Limit = limit
+
+		opts = append(opts, libp2p.RelayV2Options(relay.WithResources(rc)))
 	}
 
 	return opts, nil
@@ -115,6 +130,7 @@ func main() {
 
 		clientFs := flag.NewFlagSet("client", flag.ExitOnError)
 		clientFs.StringVar(&cOpts.dest, "dest", "", "server multiaddr to dial")
+		clientFs.StringVar(&cOpts.relayv2, "relay", "", "relay to use and make a reservation")
 		clientFs.StringVar(&cOpts.request, "request", fmt.Sprintf("%s,%s,%s", pingRequestType, uploadRequestType, downloadRequestType), fmt.Sprintf("comma separated list of request type to send, possible values: '%s', '%s' and '%s'", pingRequestType, uploadRequestType, downloadRequestType))
 		clientFs.BoolVar(&cOpts.reco, "reco", false, "test reconnection to server")
 		clientFs.IntVar(&cOpts.size, "size", megabyte, "size (in bytes) of data to upload / download (default: 1MB)")
@@ -173,6 +189,7 @@ func main() {
 	{
 		rootFs := flag.NewFlagSet("root", flag.ExitOnError)
 		rootFs.BoolVar(&gOpts.tcp, "tcp", false, "use TCP instead of QUIC")
+		rootFs.BoolVar(&gOpts.tcp, "v2", false, "use relay v2")
 		rootFs.BoolVar(&gOpts.insecure, "insecure", false, "use an unencrypted connection")
 		rootFs.Int64Var(&gOpts.seed, "seed", 0, "set random seed for id generation")
 		rootFs.BoolVar(&gOpts.verbose, "v", false, "verbose mode: print debug level for relevant libp2p loggers")

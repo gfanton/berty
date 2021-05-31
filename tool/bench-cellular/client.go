@@ -13,10 +13,11 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
-	peer "github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	p2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
@@ -30,6 +31,7 @@ type clientOpts struct {
 	request string
 	reco    bool
 	size    int
+	relayv2 string
 }
 
 func createClientHost(ctx context.Context, gOpts *globalOpts) (host.Host, error) {
@@ -183,6 +185,19 @@ func download(ctx context.Context, h host.Host, peerid peer.ID, cOpts *clientOpt
 	return nil
 }
 
+func getRelayAddrs(m ma.Multiaddr) (ma.Multiaddr, error) {
+	relayaddr, _ := ma.SplitFunc(m, func(c ma.Component) bool {
+		return c.Protocol().Code == ma.P_CIRCUIT
+	})
+
+	if !manet.IsThinWaist(relayaddr) {
+		return nil, fmt.Errorf("maddr is not thin waist: %s", m.String())
+	}
+
+	return relayaddr, nil
+
+}
+
 func runClient(ctx context.Context, gOpts *globalOpts, cOpts *clientOpts) error {
 	h, err := createClientHost(ctx, gOpts)
 	if err != nil {
@@ -191,10 +206,22 @@ func runClient(ctx context.Context, gOpts *globalOpts, cOpts *clientOpts) error 
 
 	log.Println("Local peerID:", h.ID().Pretty())
 
+	maddr, err := ma.NewMultiaddr(cOpts.dest)
+	if err != nil {
+		return err
+	}
+
 	peerid, err := addDestToPeerstore(h, cOpts.dest)
 	if err != nil {
 		return err
 	}
+
+	relayaddr, err := getRelayAddrs(maddr)
+	if err != nil {
+		return err
+	}
+
+	log.Println("relay maddr:", relayaddr.String())
 
 	requestList := strings.Split(cOpts.request, ",")
 	for i, request := range requestList {

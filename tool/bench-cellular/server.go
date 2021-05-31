@@ -8,8 +8,10 @@ import (
 	"log"
 	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-circuit/v2/client"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	routing "github.com/libp2p/go-libp2p-routing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -46,6 +48,7 @@ var quicIPFSRelays = []string{
 const (
 	staticBertyRelayMode = "static-berty"
 	staticIPFSRelayMode  = "static-ipfs"
+	relayv2              = "relay-v2"
 	discoveryRelayMode   = "discovery"
 	disabledRelayMode    = "none"
 )
@@ -56,32 +59,31 @@ type serverOpts struct {
 	relay string
 }
 
+type ServerHost struct {
+	host.Host
+	staticRelays []peer.AddrInfo
+}
+
 func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts) (host.Host, error) {
 	opts, err := globalOptsToLibp2pOpts(gOpts) // Get identity and transport
 	if err != nil {
 		return nil, err
 	}
 
-	if sOpts.relay == disabledRelayMode { // If no relay, add relevant listener
-		if sOpts.ip6 {
-			if gOpts.tcp {
-				opts = append(opts, libp2p.ListenAddrStrings(fmt.Sprintf("/ip6/::/tcp/%d", sOpts.port)))
-			} else {
-				opts = append(opts, libp2p.ListenAddrStrings(fmt.Sprintf("/ip6/::/udp/%d/quic", sOpts.port)))
-			}
-		} else {
-			if gOpts.tcp {
-				opts = append(opts, libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", sOpts.port)))
-			} else {
-				opts = append(opts, libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic", sOpts.port)))
-			}
-		}
+	switch sOpts.relay {
+	case disabledRelayMode:
+		l := getListeners(sOpts.port, sOpts.ip6, !gOpts.tcp)
+		opts = append(opts, libp2p.ListenAddrStrings(l))
 		opts = append(opts, libp2p.NATPortMap()) // Open port on NAT for access through public IP
 		opts = append(opts, libp2p.DisableRelay())
-	} else {
+
+	default:
 		opts = append(opts, libp2p.ListenAddrs()) // If using relay, set no listener
-		opts = append(opts, libp2p.EnableAutoRelay())
 		opts = append(opts, libp2p.ForceReachabilityPrivate())
+
+		if !gOpts.v2 {
+			opts = append(opts, libp2p.EnableAutoRelay())
+		}
 	}
 
 	// Relay discovery needs DHT routing to discover relays
@@ -93,46 +95,64 @@ func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts)
 				return dht.New(ctx, h, dht.Mode(dht.ModeClient), dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...))
 			}),
 		)
-	} else { // Or setup Berty / IPFS static relays
-		var (
-			maddrRelays  []string
-			staticRelays []peer.AddrInfo
-		)
 
-		if sOpts.relay == staticBertyRelayMode {
-			if gOpts.tcp {
-				maddrRelays = tcpBertyRelays
-			} else {
-				maddrRelays = quicBertyRelays
-			}
+		return libp2p.New(ctx, opts...)
+	}
+	// Or setup Berty / IPFS static relays
+	var (
+		maddrRelays  []string
+		staticRelays []peer.AddrInfo
+	)
+
+	if sOpts.relay == staticBertyRelayMode {
+		if gOpts.tcp {
+			maddrRelays = tcpBertyRelays
 		} else {
-			if gOpts.tcp {
-				maddrRelays = tcpIPFSRelays
-			} else {
-				maddrRelays = quicIPFSRelays
-			}
+			maddrRelays = quicBertyRelays
 		}
-
-		for _, addr := range maddrRelays {
-			maddr, err := ma.NewMultiaddr(addr)
-			if err != nil {
-				log.Printf("error: can't parse Multiaddr: %v\n", err)
-				continue
-			}
-
-			pi, err := peer.AddrInfoFromP2pAddr(maddr)
-			if err != nil {
-				log.Printf("error: can't parse AddrInfo: %v\n", err)
-				continue
-			}
-
-			staticRelays = append(staticRelays, *pi)
+	} else {
+		if gOpts.tcp {
+			maddrRelays = tcpIPFSRelays
+		} else {
+			maddrRelays = quicIPFSRelays
 		}
-
-		opts = append(opts, libp2p.StaticRelays(staticRelays))
 	}
 
-	return libp2p.New(ctx, opts...) // Create host
+	for _, addr := range maddrRelays {
+		maddr, err := ma.NewMultiaddr(addr)
+		if err != nil {
+			log.Printf("error: can't parse Multiaddr: %v\n", err)
+			continue
+		}
+
+		pi, err := peer.AddrInfoFromP2pAddr(maddr)
+		if err != nil {
+			log.Printf("error: can't parse AddrInfo: %v\n", err)
+			continue
+		}
+
+		staticRelays = append(staticRelays, *pi)
+	}
+
+	opts = append(opts, libp2p.StaticRelays(staticRelays))
+
+	h, err := libp2p.New(ctx, opts...) // Create host
+	if err != nil {
+		return nil, err
+	}
+
+	if gOpts.v2 {
+		for _, relay := range staticRelays {
+			rsvp, err := client.Reserve(ctx, h, relay)
+			if err != nil {
+				return nil, fmt.Errorf("unable to make a reservation to `%s`: %w", relay.ID.ShortString(), err)
+			}
+
+			log.Printf("made a reservation on `%s`, expire in %ss", time.Until(rsvp.Expiration).Milliseconds())
+		}
+	}
+
+	return h, nil
 }
 
 func printHint(h host.Host, gOpts *globalOpts, sOpts *serverOpts) {
@@ -280,4 +300,20 @@ func runServer(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts) error 
 	})
 
 	select {}
+}
+
+func getListeners(port int, ip6, quic bool) string {
+	if ip6 {
+		if quic {
+			return fmt.Sprintf("/ip6/::/udp/%d/quic", port)
+		}
+
+		return fmt.Sprintf("/ip6/::/tcp/%d", port)
+	}
+
+	if quic {
+		return fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic", port)
+	}
+
+	return fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)
 }
