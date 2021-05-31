@@ -92,7 +92,7 @@ func main() {
 		serverFs := flag.NewFlagSet("server", flag.ExitOnError)
 		serverFs.IntVar(&sOpts.port, "port", 0, "port to listen on (default: random)")
 		serverFs.BoolVar(&sOpts.ip6, "ip6", false, "use ipv6 instead of ipv4")
-		serverFs.StringVar(&sOpts.relay, "relay", staticBertyRelayMode, fmt.Sprintf("set relay mode, possible values: '%s', '%s', '%s' or '%s'", staticBertyRelayMode, staticIPFSRelayMode, discoveryRelayMode, disabledRelayMode))
+		serverFs.StringVar(&sOpts.relay, "relay", staticBertyRelayMode, fmt.Sprintf("set relay mode, possible values: '%s', '%s', '%s', '%s' or some valid multiaddr(s)", staticBertyRelayMode, staticIPFSRelayMode, discoveryRelayMode, disabledRelayMode))
 
 		serverCommand = &ffcli.Command{
 			Name:       "server",
@@ -104,8 +104,11 @@ func main() {
 					return flag.ErrHelp
 				}
 				if sOpts.relay != staticBertyRelayMode && sOpts.relay != staticIPFSRelayMode && sOpts.relay != discoveryRelayMode && sOpts.relay != disabledRelayMode {
-					fmt.Fprintf(os.Stderr, "error: invalid value for -relay flag: %s\n\n", sOpts.relay)
-					return flag.ErrHelp
+					if _, err := ma.NewMultiaddr(sOpts.relay); err != nil {
+						fmt.Fprintf(os.Stderr, "error: invalid value for -relay flag: %s\n\n", sOpts.relay)
+						return flag.ErrHelp
+					}
+
 				}
 
 				if gOpts.verbose {
@@ -130,7 +133,6 @@ func main() {
 
 		clientFs := flag.NewFlagSet("client", flag.ExitOnError)
 		clientFs.StringVar(&cOpts.dest, "dest", "", "server multiaddr to dial")
-		clientFs.StringVar(&cOpts.relayv2, "relay", "", "relay to use and make a reservation")
 		clientFs.StringVar(&cOpts.request, "request", fmt.Sprintf("%s,%s,%s", pingRequestType, uploadRequestType, downloadRequestType), fmt.Sprintf("comma separated list of request type to send, possible values: '%s', '%s' and '%s'", pingRequestType, uploadRequestType, downloadRequestType))
 		clientFs.BoolVar(&cOpts.reco, "reco", false, "test reconnection to server")
 		clientFs.IntVar(&cOpts.size, "size", megabyte, "size (in bytes) of data to upload / download (default: 1MB)")
@@ -189,7 +191,7 @@ func main() {
 	{
 		rootFs := flag.NewFlagSet("root", flag.ExitOnError)
 		rootFs.BoolVar(&gOpts.tcp, "tcp", false, "use TCP instead of QUIC")
-		rootFs.BoolVar(&gOpts.tcp, "v2", false, "use relay v2")
+		rootFs.BoolVar(&gOpts.v2, "v2", false, "use relay v2")
 		rootFs.BoolVar(&gOpts.insecure, "insecure", false, "use an unencrypted connection")
 		rootFs.Int64Var(&gOpts.seed, "seed", 0, "set random seed for id generation")
 		rootFs.BoolVar(&gOpts.verbose, "v", false, "verbose mode: print debug level for relevant libp2p loggers")

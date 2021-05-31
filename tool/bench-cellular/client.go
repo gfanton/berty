@@ -13,6 +13,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	p2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -31,7 +32,6 @@ type clientOpts struct {
 	request string
 	reco    bool
 	size    int
-	relayv2 string
 }
 
 func createClientHost(ctx context.Context, gOpts *globalOpts) (host.Host, error) {
@@ -199,6 +199,8 @@ func getRelayAddrs(m ma.Multiaddr) (ma.Multiaddr, error) {
 }
 
 func runClient(ctx context.Context, gOpts *globalOpts, cOpts *clientOpts) error {
+	ctx = network.WithUseTransient(ctx, "for testing only")
+
 	h, err := createClientHost(ctx, gOpts)
 	if err != nil {
 		return fmt.Errorf("client host creation failed: %v", err)
@@ -216,12 +218,22 @@ func runClient(ctx context.Context, gOpts *globalOpts, cOpts *clientOpts) error 
 		return err
 	}
 
-	relayaddr, err := getRelayAddrs(maddr)
-	if err != nil {
-		return err
-	}
+	if gOpts.v2 {
+		relayaddr, err := getRelayAddrs(maddr)
+		if err != nil {
+			return err
+		}
 
-	log.Println("relay maddr:", relayaddr.String())
+		pi, err := peer.AddrInfoFromP2pAddr(relayaddr)
+		if err != nil {
+			return err
+		}
+
+		log.Println("relay maddr:", relayaddr.String())
+		if err := h.Connect(ctx, *pi); err != nil {
+			return err
+		}
+	}
 
 	requestList := strings.Split(cOpts.request, ",")
 	for i, request := range requestList {

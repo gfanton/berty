@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -65,6 +66,8 @@ type ServerHost struct {
 }
 
 func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts) (host.Host, error) {
+	log.Println("create server host")
+
 	opts, err := globalOptsToLibp2pOpts(gOpts) // Get identity and transport
 	if err != nil {
 		return nil, err
@@ -80,10 +83,7 @@ func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts)
 	default:
 		opts = append(opts, libp2p.ListenAddrs()) // If using relay, set no listener
 		opts = append(opts, libp2p.ForceReachabilityPrivate())
-
-		if !gOpts.v2 {
-			opts = append(opts, libp2p.EnableAutoRelay())
-		}
+		opts = append(opts, libp2p.EnableAutoRelay())
 	}
 
 	// Relay discovery needs DHT routing to discover relays
@@ -98,24 +98,28 @@ func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts)
 
 		return libp2p.New(ctx, opts...)
 	}
+
 	// Or setup Berty / IPFS static relays
 	var (
 		maddrRelays  []string
 		staticRelays []peer.AddrInfo
 	)
 
-	if sOpts.relay == staticBertyRelayMode {
+	switch sOpts.relay {
+	case staticIPFSRelayMode:
 		if gOpts.tcp {
 			maddrRelays = tcpBertyRelays
 		} else {
 			maddrRelays = quicBertyRelays
 		}
-	} else {
+	case staticBertyRelayMode:
 		if gOpts.tcp {
-			maddrRelays = tcpIPFSRelays
+			maddrRelays = tcpBertyRelays
 		} else {
-			maddrRelays = quicIPFSRelays
+			maddrRelays = quicBertyRelays
 		}
+	default:
+		maddrRelays = strings.Split(sOpts.relay, ",")
 	}
 
 	for _, addr := range maddrRelays {
@@ -142,13 +146,30 @@ func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts)
 	}
 
 	if gOpts.v2 {
+		circuitaddr := ma.StringCast("/p2p-circuit/p2p/" + h.ID().Pretty())
 		for _, relay := range staticRelays {
+			log.Printf("connecting to `%s`", relay.String())
+			if err := h.Connect(ctx, relay); err != nil {
+				return nil, err
+			}
+
+			log.Printf("making a reservation to `%s`", relay.String())
 			rsvp, err := client.Reserve(ctx, h, relay)
 			if err != nil {
 				return nil, fmt.Errorf("unable to make a reservation to `%s`: %w", relay.ID.ShortString(), err)
 			}
 
-			log.Printf("made a reservation on `%s`, expire in %ss", time.Until(rsvp.Expiration).Milliseconds())
+			log.Printf("made a reservation on `%s`, expire in %fs", relay.ID.ShortString(), time.Until(rsvp.Expiration).Minutes())
+
+			maddrs, err := peer.AddrInfoToP2pAddrs(&relay)
+			if err != nil {
+				return nil, fmt.Errorf("unable to craft back maddr: %w", err)
+			}
+
+			for _, maddr := range maddrs {
+				fulladdr := maddr.Encapsulate(circuitaddr)
+				log.Printf("circuit: `%s`", fulladdr.String())
+			}
 		}
 	}
 
@@ -158,10 +179,12 @@ func createServerHost(ctx context.Context, gOpts *globalOpts, sOpts *serverOpts)
 func printHint(h host.Host, gOpts *globalOpts, sOpts *serverOpts) {
 	var serverAddr ma.Multiaddr
 
-	if sOpts.relay == disabledRelayMode {
-		log.Print("Waiting for public address...")
-	} else {
-		log.Print("Waiting for relay address...")
+	if !gOpts.v2 {
+		if sOpts.relay == disabledRelayMode {
+			log.Print("Waiting for public address...")
+		} else {
+			log.Print("Waiting for relay address...")
+		}
 	}
 
 	eventReceiver, err := h.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
