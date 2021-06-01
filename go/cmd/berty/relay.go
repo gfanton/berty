@@ -29,6 +29,8 @@ import (
 	"berty.tech/berty/v2/go/pkg/errcode"
 )
 
+const MaxDataSize = 1024 * 1024 * 10 // 10mo
+
 func relayServerCommand() *ffcli.Command {
 	var (
 		serveListeners = "/ip4/0.0.0.0/tcp/4040,/ip4/0.0.0.0/udp/4141/quic"
@@ -106,7 +108,7 @@ func relayServerCommand() *ffcli.Command {
 			// @TODO(gfanton): add resource limiter as opt
 			l := relay.DefaultLimit()
 			l.Duration = 10 * time.Minute
-			l.Data = 0 // remove data limit
+			l.Data = MaxDataSize
 
 			rc := relay.DefaultResources()
 			rc.Limit = l
