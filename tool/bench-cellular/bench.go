@@ -73,7 +73,9 @@ func globalOptsToLibp2pOpts(gOpts *globalOpts) ([]libp2p.Option, error) {
 		rc := relay.DefaultResources()
 		rc.Limit = limit
 
-		opts = append(opts, libp2p.RelayV2Options(relay.WithResources(rc)))
+		opts = append(opts,
+			libp2p.EnableRelay(),
+			libp2p.RelayV2Options(relay.WithResources(rc)))
 	}
 
 	return opts, nil

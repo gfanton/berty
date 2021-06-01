@@ -103,7 +103,7 @@ func ping(ctx context.Context, h host.Host, peerid peer.ID) error {
 
 	log.Printf("New ping started with timeout: %v", timeout)
 
-	for result := range p2pping.Ping(timeoutCtx, h, peerid) {
+	for result := range p2pping.Ping(network.WithUseTransient(timeoutCtx, "download bench"), h, peerid) {
 		if result.Error != nil {
 			return fmt.Errorf("ping error: %v", result.Error)
 		}
@@ -125,7 +125,7 @@ func ping(ctx context.Context, h host.Host, peerid peer.ID) error {
 
 func upload(ctx context.Context, h host.Host, peerid peer.ID, cOpts *clientOpts) error {
 	start := time.Now()
-	su, err := h.NewStream(ctx, peerid, benchUploadPID)
+	su, err := h.NewStream(network.WithUseTransient(ctx, "bench cellular"), peerid, benchUploadPID)
 	if err != nil {
 		return fmt.Errorf("new upload stream failed: %v", err)
 	}
@@ -157,7 +157,7 @@ func upload(ctx context.Context, h host.Host, peerid peer.ID, cOpts *clientOpts)
 
 func download(ctx context.Context, h host.Host, peerid peer.ID, cOpts *clientOpts) error {
 	start := time.Now()
-	sd, err := h.NewStream(ctx, peerid, benchDownloadPID)
+	sd, err := h.NewStream(network.WithUseTransient(ctx, "download bench"), peerid, benchDownloadPID)
 	if err != nil {
 		return fmt.Errorf("new download stream failed: %v", err)
 	}
@@ -199,8 +199,6 @@ func getRelayAddrs(m ma.Multiaddr) (ma.Multiaddr, error) {
 }
 
 func runClient(ctx context.Context, gOpts *globalOpts, cOpts *clientOpts) error {
-	ctx = network.WithUseTransient(ctx, "for testing only")
-
 	h, err := createClientHost(ctx, gOpts)
 	if err != nil {
 		return fmt.Errorf("client host creation failed: %v", err)

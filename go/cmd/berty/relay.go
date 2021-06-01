@@ -106,6 +106,7 @@ func relayServerCommand() *ffcli.Command {
 			// @TODO(gfanton): add resource limiter as opt
 			l := relay.DefaultLimit()
 			l.Duration = 10 * time.Minute
+			l.Data = 0 // remove data limit
 
 			rc := relay.DefaultResources()
 			rc.Limit = l
