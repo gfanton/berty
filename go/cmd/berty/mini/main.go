@@ -10,6 +10,7 @@ import (
 
 	"github.com/gdamore/tcell"
 	"github.com/gdamore/tcell/terminfo"
+	host "github.com/libp2p/go-libp2p-core/host"
 	"github.com/rivo/tview"
 	"go.uber.org/zap"
 
@@ -22,6 +23,7 @@ import (
 )
 
 type Opts struct {
+	Host             host.Host
 	MessengerClient  messengertypes.MessengerServiceClient
 	ProtocolClient   protocoltypes.ProtocolServiceClient
 	Logger           *zap.Logger
@@ -68,7 +70,7 @@ func Main(ctx context.Context, opts *Opts) error {
 		globalLogger = zap.NewNop()
 	}
 
-	tabbedView := newTabbedGroups(ctx, accountGroup, opts.ProtocolClient, opts.MessengerClient, app, opts.DisplayName)
+	tabbedView := newTabbedGroups(ctx, accountGroup, opts.ProtocolClient, opts.MessengerClient, app, opts.DisplayName, opts.Host)
 	if len(opts.GroupInvitation) > 0 {
 		req := &protocoltypes.GroupMetadataList_Request{GroupPK: accountGroup.Group.PublicKey}
 		cl, err := tabbedView.protocol.GroupMetadataList(ctx, req)

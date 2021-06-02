@@ -417,7 +417,11 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 	}
 
 	// enable autorelay
-	p2popts = append(p2popts, libp2p.ListenAddrs(), libp2p.EnableAutoRelay(), libp2p.ForceReachabilityPrivate())
+	p2popts = append(p2popts,
+		libp2p.ListenAddrs(),
+		libp2p.ForceReachabilityPrivate(),
+		libp2p.EnableRelay(),
+	)
 
 	// pis, err := m.getStaticRelays()
 	// if err != nil {

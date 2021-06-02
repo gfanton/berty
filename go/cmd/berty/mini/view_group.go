@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/api/trace"
 	"go.uber.org/zap"
 
+	"berty.tech/berty/v2/go/internal/notify"
 	"berty.tech/berty/v2/go/internal/tracer"
 	"berty.tech/berty/v2/go/pkg/banner"
 	"berty.tech/berty/v2/go/pkg/messengertypes"
@@ -38,6 +39,10 @@ type groupView struct {
 	muAggregates sync.Mutex
 	logger       *zap.Logger
 	hasNew       int32
+
+	nrelay    *notify.Notify
+	cmsg      string
+	relaymode bool
 }
 
 func (v *groupView) View() tview.Primitive {
@@ -47,6 +52,10 @@ func (v *groupView) View() tview.Primitive {
 func (v *groupView) commandParser(ctx context.Context, input string) error {
 	tr := tracer.New("command")
 	input = strings.TrimSpace(input)
+
+	if v.relaymode {
+		return v.relayCommandParser(ctx, input)
+	}
 
 	if len(input) > 0 && input[0] == '/' {
 		for _, attrs := range commandList() {

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gdamore/tcell"
+	host "github.com/libp2p/go-libp2p-core/host"
 	"github.com/rivo/tview"
 
 	"berty.tech/berty/v2/go/pkg/messengertypes"
@@ -29,6 +30,9 @@ type tabbedGroupsView struct {
 	displayName            string
 	contactStates          map[string]protocoltypes.ContactState
 	contactNames           map[string]string
+
+	// for debug purpose
+	host host.Host
 }
 
 func (v *tabbedGroupsView) getChannelViewGroups() []*groupView {
@@ -222,7 +226,7 @@ func (v *tabbedGroupsView) GetHistory() tview.Primitive {
 	return v.activeViewContainer
 }
 
-func newTabbedGroups(ctx context.Context, g *protocoltypes.GroupInfo_Reply, protocol protocoltypes.ProtocolServiceClient, messenger messengertypes.MessengerServiceClient, app *tview.Application, displayName string) *tabbedGroupsView {
+func newTabbedGroups(ctx context.Context, g *protocoltypes.GroupInfo_Reply, protocol protocoltypes.ProtocolServiceClient, messenger messengertypes.MessengerServiceClient, app *tview.Application, displayName string, h host.Host) *tabbedGroupsView {
 	v := &tabbedGroupsView{
 		ctx:           ctx,
 		topics:        tview.NewTable(),
@@ -232,6 +236,9 @@ func newTabbedGroups(ctx context.Context, g *protocoltypes.GroupInfo_Reply, prot
 		contactStates: map[string]protocoltypes.ContactState{},
 		contactNames:  map[string]string{},
 		displayName:   displayName,
+
+		// for debug purpose:
+		host: h,
 	}
 
 	v.accountGroupView = newViewGroup(v, g.Group, g.MemberPK, g.DevicePK, globalLogger)

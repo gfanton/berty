@@ -10,6 +10,7 @@ const (
 	messageTypeMeta messageType = iota + 1
 	messageTypeMessage
 	messageTypeError
+	messageTypeRelay
 )
 
 type historyMessage struct {

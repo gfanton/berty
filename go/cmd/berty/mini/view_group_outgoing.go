@@ -144,6 +144,19 @@ func commandList() []*command {
 			help:  "Shows IPFS debug information",
 			cmd:   debugIPFSCommand,
 		},
+
+		// wip: relay
+		{
+			title: "relay client",
+			help:  "Start a bench as relay client",
+			cmd:   clientRelay,
+		},
+		{
+			title: "relay server",
+			help:  "Start a bench as relay serveur (doesn not act has hop)",
+			cmd:   serverRelay,
+		},
+
 		{
 			title: "debug system",
 			help:  "Shows system debug information",

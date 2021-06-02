@@ -58,7 +58,10 @@ func (h *historyMessageList) Append(m *historyMessage) {
 			cell.SetTextColor(tcell.ColorOrangeRed)
 		} else if m.messageType == messageTypeMeta {
 			cell.SetTextColor(tcell.ColorLimeGreen)
+		} else if m.messageType == messageTypeRelay {
+			cell.SetTextColor(tcell.ColorDarkCyan)
 		}
+
 	}
 
 	h.historyScroll.ScrollToEnd()

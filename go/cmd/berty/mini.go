@@ -47,6 +47,11 @@ func miniCommand() *ffcli.Command {
 			}
 			miniLogger := logger.Named("mini")
 
+			_, node, err := manager.GetLocalIPFS()
+			if err != nil {
+				return err
+			}
+
 			// messenger client
 			messengerClient, err := manager.GetMessengerClient()
 			if err != nil {
@@ -62,6 +67,7 @@ func miniCommand() *ffcli.Command {
 			lcmanager := manager.GetLifecycleManager()
 
 			return mini.Main(ctx, &mini.Opts{
+				Host:             node.PeerHost,
 				GroupInvitation:  groupFlag,
 				MessengerClient:  messengerClient,
 				ProtocolClient:   protocolClient,
