@@ -12,6 +12,7 @@ import (
 
 	"github.com/gdamore/tcell"
 	"github.com/gogo/protobuf/proto"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/pkg/errors"
 	"github.com/rivo/tview"
 	"go.opentelemetry.io/otel/api/kv"
@@ -40,6 +41,8 @@ type groupView struct {
 	logger       *zap.Logger
 	hasNew       int32
 
+	// @FIXME(gfanton): put this in a `relaysession` struct
+	rpeerid   peer.ID
 	nrelay    *notify.Notify
 	cmsg      string
 	relaymode bool

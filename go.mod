@@ -123,8 +123,7 @@ replace (
 	bazil.org/fuse => bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc // specific version for iOS building
 	github.com/agl/ed25519 => github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // latest commit before the author shutdown the repo; see https://github.com/golang/go/issues/20504
 	// relay v2
-	// github.com/libp2p/go-libp2p => github.com/libp2p/go-libp2p v0.13.1-0.20210505044348-4fa48655bb89 // use for relay v2 compatibility
-	github.com/libp2p/go-libp2p => ../../github.com/libp2p/go-libp2p // use for relay v2 compatibility
+	github.com/libp2p/go-libp2p => github.com/gfanton/go-libp2p v0.5.3-0.20210608133615-0ca1df4d61d3 // use for relay v2 compatibility
 	github.com/libp2p/go-libp2p-circuit => github.com/libp2p/go-libp2p-circuit v0.4.1-0.20210309082447-90d67900a8fe // relay v2
 	github.com/libp2p/go-libp2p-rendezvous => github.com/berty/go-libp2p-rendezvous v0.0.0-20201028141428-5b2e7e8ff19a // use berty fork of go-libp2p-rendezvous
 	github.com/peterbourgon/ff/v3 => github.com/moul/ff/v3 v3.0.1 // temporary, see https://github.com/peterbourgon/ff/pull/67, https://github.com/peterbourgon/ff/issues/68
