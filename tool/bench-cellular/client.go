@@ -181,14 +181,6 @@ func download(ctx context.Context, h host.Host, peerid peer.ID, cOpts *clientOpt
 	log.Printf("Data (%d bytes) download took: %v", cOpts.size, time.Since(start))
 
 	sd.Close()
-	v.messages.Append(&historyMessage{
-		messageType: messageTypeMeta,
-		payload:     []byte(fmt.Sprintf("connecting to peer %s", pi.ID.ShortString())),
-	})
-
-	if err := v.v.host.Connect(ctx, *pi); err != nil {
-		return fmt.Errorf("unable to connect to relay")
-	}
 
 	return nil
 }
@@ -203,6 +195,7 @@ func getRelayAddrs(m ma.Multiaddr) (ma.Multiaddr, error) {
 	}
 
 	return relayaddr, nil
+
 }
 
 func runClient(ctx context.Context, gOpts *globalOpts, cOpts *clientOpts) error {
