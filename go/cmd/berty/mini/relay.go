@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"berty.tech/berty/v2/go/internal/notify"
+	quict "github.com/libp2p/go-libp2p-quic-transport"
+	tcpt "github.com/libp2p/go-tcp-transport"
+
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-circuit/v2/client"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -104,9 +108,20 @@ func serverRelay(ctx context.Context, v *groupView, addr string) error {
 }
 
 func clientRelay(ctx context.Context, v *groupView, addr string) error {
+	h, err := libp2p.New(ctx,
+		libp2p.EnableRelay(),
+		libp2p.Transport(quict.NewTransport),
+		libp2p.Transport(tcpt.NewTCPTransport),
+	)
+
 	if v.v.host == nil {
 		return fmt.Errorf("no host given")
 	}
+
+	v.messages.Append(&historyMessage{
+		messageType: messageTypeMeta,
+		payload:     []byte(fmt.Sprintf("resolving addr: %s", addr)),
+	})
 
 	maddr, err := ma.NewMultiaddr(addr)
 	if err != nil {
