@@ -286,13 +286,14 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 		return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
 	}
 
-	rdvpeers, err := m.getRdvpMaddrs()
-	if err != nil {
-		return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
-	}
+	// rdvpeers, err := m.getRdvpMaddrs()
+	// if err != nil {
+	// 	return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
+	// }
 
 	cfg.Addresses.Swarm = m.getSwarmAddrs()
 	cfg.Bootstrap = m.getBootstrapAddrs()
+	cfg.Bootstrap = []string{}
 
 	if m.Node.Protocol.IPFSAPIListeners != "" {
 		cfg.Addresses.API = strings.Split(m.Node.Protocol.IPFSAPIListeners, ",")
@@ -438,17 +439,17 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 	// }
 
 	// prefill peerstore with known rdvp servers
-	if m.Node.Protocol.Tor.Mode != TorRequired {
-		for _, p := range rdvpeers {
-			cfg.Peering.Peers = append(cfg.Peering.Peers, *p)
-		}
-	}
-
+	// if m.Node.Protocol.Tor.Mode != TorRequired {
+	// 	for _, p := range rdvpeers {
+	// 		cfg.Peering.Peers = append(cfg.Peering.Peers, *p)
+	// 	}
+	// }
+	cfg.Swarm.DisableNatPortMap = true
 	return p2popts, nil
 }
 
 func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
-	ctx := m.getContext()
+	// ctx := m.getContext()
 
 	logger, err := m.getLogger()
 	if err != nil {
@@ -496,23 +497,23 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 		drivers = append(drivers,
 			tinder.NewDriverFromRouting("dht", r, nil))
 	}
-	relays, err := m.getStaticRelays()
-	if err != nil {
-		return errcode.ErrIPFSSetupHost.Wrap(err)
-	}
+	// relays, err := m.getStaticRelays()
+	// if err != nil {
+	// 	return errcode.ErrIPFSSetupHost.Wrap(err)
+	// }
 
-	auto, err := ipfsutil.NewAutoRelayV2(h, &ipfsutil.AutoRelayV2Opts{
-		Logger:       logger.Named("autorelayv2"),
-		StaticRelays: relays,
-	})
-	if err != nil {
-		return errcode.ErrIPFSSetupHost.Wrap(err)
-	}
+	// auto, err := ipfsutil.NewAutoRelayV2(h, &ipfsutil.AutoRelayV2Opts{
+	// 	Logger:       logger.Named("autorelayv2"),
+	// 	StaticRelays: relays,
+	// })
+	// if err != nil {
+	// 	return errcode.ErrIPFSSetupHost.Wrap(err)
+	// }
 
-	go func() {
-		<-ctx.Done()
-		auto.Close()
-	}()
+	// go func() {
+	// 	<-ctx.Done()
+	// 	auto.Close()
+	// }()
 
 	// localdisc driver
 	// @TODO(gfanton): check if this is useful

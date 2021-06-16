@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"berty.tech/berty/v2/go/internal/notify"
-	quict "github.com/libp2p/go-libp2p-quic-transport"
-	tcpt "github.com/libp2p/go-tcp-transport"
+	// ds "github.com/ipfs/go-datastore"
+	// ds_sync "github.com/ipfs/go-datastore/sync"
 
-	"github.com/libp2p/go-libp2p"
+	"berty.tech/berty/v2/go/internal/notify"
+
 	"github.com/libp2p/go-libp2p-circuit/v2/client"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -30,9 +30,15 @@ const DownloadRelayID = "/relay/download/1.0.0"
 // }
 
 func serverRelay(ctx context.Context, v *groupView, addr string) error {
-	if v.v.host == nil {
-		return fmt.Errorf("no host given")
-	}
+	h := v.v.host
+	// h, err := libp2p.New(ctx,
+	// 	libp2p.EnableRelay(),
+	// 	libp2p.Transport(quict.NewTransport),
+	// 	libp2p.Transport(tcpt.NewTCPTransport),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
 
 	maddr, err := ma.NewMultiaddr(addr)
 	if err != nil {
@@ -44,14 +50,14 @@ func serverRelay(ctx context.Context, v *groupView, addr string) error {
 		return fmt.Errorf("can't parse AddrInfo: %w", err)
 	}
 
-	circuitaddr := ma.StringCast("/p2p-circuit/p2p/" + v.v.host.ID().Pretty())
+	circuitaddr := ma.StringCast("/p2p-circuit/p2p/" + h.ID().Pretty())
 
 	v.messages.Append(&historyMessage{
 		messageType: messageTypeMeta,
 		payload:     []byte(fmt.Sprintf("connecting to %s", pi.ID.ShortString())),
 	})
 
-	if err := v.v.host.Connect(ctx, *pi); err != nil {
+	if err := h.Connect(ctx, *pi); err != nil {
 		return fmt.Errorf("unable to connect to relay")
 	}
 
@@ -60,7 +66,7 @@ func serverRelay(ctx context.Context, v *groupView, addr string) error {
 		payload:     []byte("making a reservation to " + pi.ID.ShortString()),
 	})
 
-	rsvp, err := client.Reserve(ctx, v.v.host, *pi)
+	rsvp, err := client.Reserve(ctx, h, *pi)
 	if err != nil {
 		return fmt.Errorf("unable to make a reservation to `%s`: %w", pi.ID.ShortString(), err)
 	}
@@ -79,7 +85,7 @@ func serverRelay(ctx context.Context, v *groupView, addr string) error {
 	})
 
 	v.nrelay = notify.New(&sync.Mutex{})
-	v.v.host.SetStreamHandler(ServerRelayID, func(s network.Stream) {
+	h.SetStreamHandler(ServerRelayID, func(s network.Stream) {
 		v.messages.Append(&historyMessage{
 			messageType: messageTypeMeta,
 			payload:     []byte("connected: " + s.Conn().RemotePeer().ShortString()),
@@ -88,7 +94,7 @@ func serverRelay(ctx context.Context, v *groupView, addr string) error {
 		handleStreamCommand(s, v)
 	})
 
-	v.v.host.SetStreamHandler(UploadRelayID, func(s network.Stream) {
+	h.SetStreamHandler(UploadRelayID, func(s network.Stream) {
 		v.messages.Append(&historyMessage{
 			messageType: messageTypeMeta,
 			payload:     []byte("upload from: " + s.Conn().RemotePeer().ShortString()),
@@ -108,15 +114,35 @@ func serverRelay(ctx context.Context, v *groupView, addr string) error {
 }
 
 func clientRelay(ctx context.Context, v *groupView, addr string) error {
-	h, err := libp2p.New(ctx,
-		libp2p.EnableRelay(),
-		libp2p.Transport(quict.NewTransport),
-		libp2p.Transport(tcpt.NewTCPTransport),
-	)
+	// dsync := ds_sync.MutexWrap(ds.NewMapDatastore())
+	// repo, err := ipfsutil.CreateMockedRepo(dsync)
+	// if err != nil {
+	// 	return err
+	// }
 
-	if v.v.host == nil {
-		return fmt.Errorf("no host given")
-	}
+	// nodeOptions := &core.BuildCfg{
+	// 	Online:  true,
+	// 	Routing: libp2p.DHTOption, // This option sets the node to be a full DHT node (both fetching and storing DHT Records)
+	// 	// Routing: libp2p.DHTClientOption, // This option sets the node to be a client DHT node (only fetching records)
+	// 	Repo: repo,
+	// }
+
+	// node, err := core.NewNode(ctx, nodeOptions)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// h := node.PeerHost
+	// h, err := libp2p.New(ctx,
+	// 	libp2p.EnableRelay(),
+	// 	libp2p.Transport(quict.NewTransport),
+	// 	libp2p.Transport(tcpt.NewTCPTransport),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
+
+	h := v.v.host
 
 	v.messages.Append(&historyMessage{
 		messageType: messageTypeMeta,
@@ -139,7 +165,7 @@ func clientRelay(ctx context.Context, v *groupView, addr string) error {
 	})
 
 	// add addr to our peerstore
-	v.v.host.Peerstore().AddAddr(peerid, maddr, peerstore.AddressTTL)
+	h.Peerstore().AddAddr(peerid, maddr, peerstore.AddressTTL)
 
 	pi, err := peer.AddrInfoFromP2pAddr(relayaddr)
 	if err != nil {
@@ -151,11 +177,11 @@ func clientRelay(ctx context.Context, v *groupView, addr string) error {
 		payload:     []byte(fmt.Sprintf("connecting to relay %s", pi.ID.ShortString())),
 	})
 
-	if err := v.v.host.Connect(ctx, *pi); err != nil {
+	if err := h.Connect(ctx, *pi); err != nil {
 		return fmt.Errorf("unable to connect to relay: %w", err)
 	}
 
-	v.v.host.SetStreamHandler(UploadRelayID, func(s network.Stream) {
+	h.SetStreamHandler(UploadRelayID, func(s network.Stream) {
 		v.messages.Append(&historyMessage{
 			messageType: messageTypeMeta,
 			payload:     []byte("upload from: " + s.Conn().RemotePeer().ShortString()),
@@ -169,7 +195,7 @@ func clientRelay(ctx context.Context, v *groupView, addr string) error {
 		payload:     []byte(fmt.Sprintf("connecting to remote peer %s", peerid.ShortString())),
 	})
 
-	s, err := v.v.host.NewStream(network.WithUseTransient(ctx, "mini/chat"), peerid, ServerRelayID)
+	s, err := h.NewStream(network.WithUseTransient(ctx, "mini/chat"), peerid, ServerRelayID)
 	if err != nil {
 		return fmt.Errorf("unable to start stream: %w", err)
 	}

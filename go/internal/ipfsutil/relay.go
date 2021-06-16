@@ -144,18 +144,19 @@ func (ar *AutoRelayV2) Close() {
 func (ar *AutoRelayV2) Listen(network.Network, ma.Multiaddr)      {}
 func (ar *AutoRelayV2) ListenClose(network.Network, ma.Multiaddr) {}
 func (ar *AutoRelayV2) Connected(n network.Network, c network.Conn) {
-	ar.muRelays.RLock()
-	if _, ok := ar.relays[c.RemotePeer()]; ok {
-		addrs := ar.host.Peerstore().Addrs(c.RemotePeer())
-		peer := peer.AddrInfo{
-			ID:    c.RemotePeer(),
-			Addrs: addrs,
+	go func() {
+		ar.muRelays.RLock()
+		if _, ok := ar.relays[c.RemotePeer()]; ok {
+			addrs := ar.host.Peerstore().Addrs(c.RemotePeer())
+			peer := peer.AddrInfo{
+				ID:    c.RemotePeer(),
+				Addrs: addrs,
+			}
+
+			go ar.reserve(peer)
 		}
-
-		go ar.reserve(peer)
-	}
-	ar.muRelays.RUnlock()
-
+		ar.muRelays.RUnlock()
+	}()
 }
 
 func (ar *AutoRelayV2) Disconnected(net network.Network, c network.Conn) {
