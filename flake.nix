@@ -3,10 +3,10 @@
 
   inputs = {
       # channels
-      nixpkgs = { url = "github:nixos/nixpkgs/nixos-unstable"; };
+      # nixpkgs = { url = "github:nixos/nixpkgs/nixos-unstable"; };
       # nixpkgs-master = { url = "github:nixos/nixpkgs/master"; };
       # nixpkgs-stable-darwin = { url = "github:nixos/nixpkgs/nixpkgs-20.09-darwin"; };
-      # nixpkgs = { url = "github:nixos/nixpkgs/staging-next"; };
+      nixpkgs = { url = "github:nixos/nixpkgs/staging-next"; };
 
       # android
       android-nixpkgs = {
@@ -22,7 +22,7 @@
       flake-utils.lib.eachDefaultSystem
           (system:
               let pkgs = import nixpkgs {
-                      system = system;
+                      inherit system;
                       config = {
                           android_sdk.accept_license = true;
                       };

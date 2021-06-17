@@ -1,10 +1,5 @@
+{ pkgs }:
 
-# { stdenv, lib, fetchgit, buildGoModule, zlib, makeWrapper, xcodeenv, androidenv
-# ,
-# ,
-{
-    pkgs ? import <nixpkgs> {}
-}:
 with pkgs;
 mkShell {
     buildInputs = [
@@ -34,13 +29,12 @@ mkShell {
       })
       darwin.apple_sdk.frameworks.CoreFoundation
       darwin.apple_sdk.frameworks.CoreBluetooth
+      # darwin.apple_sdk.frameworks.MultipeerConnectivity
   ] ++ lib.optionals stdenv.isLinux [
     docker
     docker-compose
   ];
 
   shellHook = ''
-    export CGO_LDFLAGS+=" -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks"
-    export NIX_LDFLAGS_AFTER+=" -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks -L/usr/lib -F/Library/Frameworks -F/System/Library/Frameworks"
   '';
 }
