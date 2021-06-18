@@ -47,14 +47,14 @@ func miniCommand() *ffcli.Command {
 			}
 			miniLogger := logger.Named("mini")
 
-			// messenger client
-			messengerClient, err := manager.GetMessengerClient()
+			// protocol client
+			protocolClient, err := manager.GetProtocolClient()
 			if err != nil {
 				return err
 			}
 
-			// protocol client
-			protocolClient, err := manager.GetProtocolClient()
+			// messenger client
+			messengerClient, err := manager.GetMessengerClient()
 			if err != nil {
 				return err
 			}

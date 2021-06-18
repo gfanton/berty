@@ -12,6 +12,7 @@ import (
 	"github.com/gdamore/tcell/terminfo"
 	"github.com/rivo/tview"
 	"go.uber.org/zap"
+	"moul.io/progress"
 
 	"berty.tech/berty/v2/go/internal/lifecycle"
 	assets "berty.tech/berty/v2/go/pkg/assets"
@@ -28,12 +29,18 @@ type Opts struct {
 	GroupInvitation  string
 	DisplayName      string
 	LifecycleManager *lifecycle.Manager
+	Prog             *progress.Progress
 }
 
 var globalLogger *zap.Logger
 
 func Main(ctx context.Context, opts *Opts) error {
 	assets.Noop() // embed assets
+
+	if opts.Prog == nil {
+		opts.Prog = progress.New()
+		defer opts.Prog.Close()
+	}
 
 	if opts.MessengerClient == nil {
 		return errcode.ErrMissingInput.Wrap(fmt.Errorf("missing messenger client"))

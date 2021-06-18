@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	mrand "math/rand"
 	"os"
 	"strings"
+	"time"
+	"strconv"
 
 	"github.com/oklog/run"
 	ff "github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"moul.io/progress"
 	"moul.io/srand"
 
 	"berty.tech/berty/v2/go/internal/initutil"
@@ -44,7 +49,14 @@ func runMain(args []string) error {
 		if err != nil {
 			return errcode.TODO.Wrap(err)
 		}
-		defer manager.Close(nil)
+
+		var p *progress.Progress
+		b := os.Getenv("BERTY_PROGRESS")
+		if ok, _ := strconv.ParseBool(b); ok {
+			p = PrintProgress(os.Stdout)
+		}
+
+		defer manager.Close(p)
 	}
 
 	guiCmd, guiInit := guiCommand()
@@ -126,6 +138,44 @@ func runMain(args []string) error {
 	}
 
 	return run()
+}
+
+func PrintProgress(w io.Writer) (*progress.Progress) {
+	p := progress.New()
+	bw := bufio.NewWriter(w)
+	go func() {
+		c := p.Subscribe()
+
+		for step := range c {
+			snapshot := p.Snapshot()
+			percent := int(snapshot.Progress*100)
+
+			// percent
+			bw.WriteString(fmt.Sprintf("%d%% - ", percent))
+			// step
+			bw.WriteString(fmt.Sprintf("[%d/%d] - ", snapshot.Completed, snapshot.Total))
+			// ID
+			bw.WriteString(fmt.Sprintf("%s - ", step.ID))
+
+
+			switch step.State {
+			case progress.StateDone:
+				bw.WriteString("DONE")
+				bw.WriteString(fmt.Sprintf(" (%dms)", time.Since(*step.StartedAt).Milliseconds()))
+			case progress.StateInProgress:
+				bw.WriteString("IN_PROGRESS")
+			case progress.StateNotStarted:
+				bw.WriteString("NOT_STARTED")
+			case progress.StateStopped:
+				bw.WriteString("STOPPED")
+			}
+
+			bw.WriteRune('\n')
+			bw.Flush()
+		}
+	}()
+
+	return p
 }
 
 func usageFunc(c *ffcli.Command) string {

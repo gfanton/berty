@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -252,6 +253,9 @@ func (m *Manager) RunWorkers() error {
 		m.ctxCancel()
 	})
 	return m.workers.Run()
+}
+
+func (m *Manager) porgressClose(w *io.Writer) {
 }
 
 func (m *Manager) Close(prog *progress.Progress) error {
