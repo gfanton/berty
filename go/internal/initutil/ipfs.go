@@ -61,7 +61,7 @@ func (m *Manager) SetupLocalIPFSFlags(fs *flag.FlagSet) {
 	fs.StringVar(&m.Node.Protocol.IPFSWebUIListener, "p2p.webui-listener", ":3999", "IPFS WebUI listener")
 	fs.StringVar(&m.Node.Protocol.Announce, "p2p.swarm-announce", "", "IPFS announce addrs")
 	fs.StringVar(&m.Node.Protocol.Bootstrap, "p2p.bootstrap", KeywordDefault, "ipfs bootstrap node, `:default:` will set ipfs default bootstrap node")
-	fs.StringVar(&m.Node.Protocol.DHT, "p2p.dht", "client", "dht mode, can be: `none`, `client`, `server`, `auto`, `autoserver`") // @TODO(gfanton): add disabled mode
+	fs.StringVar(&m.Node.Protocol.DHT, "p2p.dht", "none", "dht mode, can be: `none`, `client`, `server`, `auto`, `autoserver`")
 	fs.BoolVar(&m.Node.Protocol.DHTRandomWalk, "p2p.dht-randomwalk", true, "if true dht will have randomwalk enable")
 	fs.StringVar(&m.Node.Protocol.NoAnnounce, "p2p.swarm-no-announce", "", "IPFS exclude announce addrs")
 	fs.BoolVar(&m.Node.Protocol.MDNS, "p2p.mdns", true, "if true mdns will be enabled")
@@ -432,6 +432,10 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 		return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
 	}
 
+	if m.Node.Protocol.DHT == "none" {
+		cfg.Reprovider = nil
+	}
+
 	if len(pis) > 0 {
 		peers := make([]peer.AddrInfo, len(pis))
 		for i, p := range pis {
@@ -487,16 +491,15 @@ func (m *Manager) configIPFSRouting(h host.Host, r p2p_routing.Routing) error {
 
 				name := fmt.Sprintf("rdvp#%.6s", peer.ID)
 				drivers = append(drivers,
-					tinder.NewDriverFromUnregisterDiscovery(name, udisc, tinder.NoFilter))
+					tinder.NewDriverFromUnregisterDiscovery(name, udisc, tinder.FilterPublicAddrs))
 			}
 		}
 	}
 
 	// dht driver
-	if m.Node.Protocol.TinderDHTDriver {
+	if m.Node.Protocol.DHT != "none" && m.Node.Protocol.TinderDHTDriver {
 		// dht driver
-		drivers = append(drivers,
-			tinder.NewDriverFromRouting("dht", r, nil))
+		drivers = append(drivers, tinder.NewDriverFromRouting("dht", r, nil))
 	}
 
 	// localdisc driver
