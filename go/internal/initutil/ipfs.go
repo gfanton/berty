@@ -432,9 +432,7 @@ func (m *Manager) setupIPFSConfig(cfg *ipfs_cfg.Config) ([]libp2p.Option, error)
 		return nil, errcode.ErrIPFSSetupConfig.Wrap(err)
 	}
 
-	if m.Node.Protocol.DHT == "none" {
-		cfg.Reprovider = nil
-	}
+	cfg.Reprovider.Strategy = "pinned"
 
 	if len(pis) > 0 {
 		peers := make([]peer.AddrInfo, len(pis))
